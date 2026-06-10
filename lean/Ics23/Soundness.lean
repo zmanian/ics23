@@ -197,7 +197,12 @@ Proof strategy (being landed incrementally):
   3. Both paths fold up to the same `root`. Induct down the two paths using
      `innerImage_inj` and leaf/inner domain separation (`ensure_inner`'s
      `!has_prefix`): at the first divergence the images coincide but the
-     preimages differ, yielding the collision. -/
+     preimages differ, yielding the collision.
+
+The same-shape, `NoPrefix`-length fragment of this is already fully proved as
+`Ics23.existence_binding_noPrefix_sameshape` (see `Existence.lean`). The general
+statement below additionally needs the varint self-delimiting argument (A1 for
+length-prefixed specs) and the differing-path case (A3). -/
 theorem existence_binding
     (H : HashFn) (hNoHash : ∀ b, H .noHash b = b)
     (s : ProofSpec) (hwf : WellFormed s)
