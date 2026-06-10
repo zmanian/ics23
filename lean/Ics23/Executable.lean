@@ -7,6 +7,7 @@ Phase 2a differential oracle — the same `concreteHash` can drive the model
 against the Rust/Go implementations over shared test vectors.
 -/
 import Ics23.Verify
+import Ics23.NonExist
 import Ics23.Specs
 import Ics23.Sha256
 
@@ -53,6 +54,44 @@ example : verifyExistence concreteHash demoPathProof iavlSpec demoPathRoot [0x01
 /-- The single-leaf root does not validate the two-level proof (and vice versa):
 distinct tree shapes give distinct roots. -/
 example : verifyExistence concreteHash demoPathProof iavlSpec demoLeafRoot [0x01] [0x02] = false := by
+  native_decide
+
+/-! ## End-to-end: non-existence over a real 2-leaf Tendermint tree
+
+Leaves at keys `01` and `03`; the tree's inner node is `sha256(0x01 ‖ left ‖ right)`.
+We prove non-membership of `02` (which sorts strictly between) and show the
+verifier *refuses* to prove non-membership of `01` (which exists). -/
+
+def tmLeaf : LeafOp := tendermintSpec.leafSpec
+def lhA : Bytes := (applyLeaf concreteHash tmLeaf [0x01] [0x0a]).getD []
+def lhB : Bytes := (applyLeaf concreteHash tmLeaf [0x03] [0x0b]).getD []
+
+/-- Left leaf's path: it is the left child, right sibling hash in the suffix. -/
+def exA : ExistenceProof :=
+  { key := [0x01], value := [0x0a], leaf := tmLeaf,
+    path := [{ hash := .sha256, prefixBytes := [1], suffix := lhB }] }
+
+/-- Right leaf's path: it is the right child, left sibling hash in the prefix. -/
+def exB : ExistenceProof :=
+  { key := [0x03], value := [0x0b], leaf := tmLeaf,
+    path := [{ hash := .sha256, prefixBytes := [1] ++ lhA, suffix := [] }] }
+
+def tmRoot : Bytes := (calculateExistenceRoot concreteHash tendermintSpec exA).getD []
+
+/-- Both leaves hash up to the same root. -/
+example : calculateExistenceRoot concreteHash tendermintSpec exB = some tmRoot := by native_decide
+
+/-- Non-membership of `02` (strictly between the two leaves) verifies. -/
+def nexProof : NonExistenceProof := { key := [0x02], left := some exA, right := some exB }
+
+example : verifyNonExistence concreteHash nexProof tendermintSpec tmRoot [0x02] = true := by
+  native_decide
+
+/-- The verifier refuses to prove non-membership of `01`, which exists — the
+Theorem B property, demonstrated computationally. -/
+def nexForgery : NonExistenceProof := { key := [0x01], left := some exA, right := some exB }
+
+example : verifyNonExistence concreteHash nexForgery tendermintSpec tmRoot [0x01] = false := by
   native_decide
 
 end Ics23
