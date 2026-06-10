@@ -58,8 +58,14 @@ for where (and why) the model intentionally differs from the Rust.
     JMT) and `existence_binding_sameshape_varProto` (IAVL / Tendermint). Two
     proofs sharing tree shape that bind one key to two values force a hash
     collision — the value-swap forgery, end to end.
-- **Stated, proof in progress:** the *general* Theorem A (`existence_binding`),
-  whose only remaining gap is the differing-path-structure case (positional
-  unambiguity, A3) — equal node images under differing inner ops.
-- **Next:** finish Theorem A; state and prove Theorem B (non-existence
-  soundness); build the differential oracle (Phase 2a).
+  - Byte-ordering facts behind the neighbor checks: `bytesLt_irrefl`,
+    `bytesLt_ne` (`NonExistSound.lean`).
+- **Stated, proof in progress (the two `sorry`s):**
+  - the *general* Theorem A (`existence_binding`) — remaining gap is the
+    differing-path-structure case (positional unambiguity, A3);
+  - Theorem B, non-existence soundness (`nonexistence_sound`) — needs the
+    ordered-tree semantics an `InnerSpec` describes.
+- **CI:** `.github/workflows/lean.yml` builds all proofs and fails if any
+  unexpected `sorry` appears (exactly two are whitelisted).
+- **Next:** close Theorem A's differing-path case; prove Theorem B; build the
+  differential oracle (Phase 2a).
