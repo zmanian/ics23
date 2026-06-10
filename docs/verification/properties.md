@@ -135,6 +135,32 @@ Concrete malicious proofs, each targeting one invariant. To be encoded as Lean
   `max_prefix_length + (child_order.len()-1)*child_size` in `i32`; an adversarial
   spec with an enormous `child_size` overflows it. Not reachable with the shipped
   specs; the Kani harness pins the safe precondition.
+- **F3 — positional ambiguity ⇒ general binding needs more than collision
+  resistance (analysis, not a live exploit).** Working the differing-path case of
+  Theorem A surfaced this. For a binary spec with `min_prefix_length =
+  max_prefix_length = p` (Tendermint, SMT), a node preimage
+  `P = prefix(p) ‖ child(cs) ‖ sibling(cs)` is accepted by `ensure_inner` under
+  *two* readings: as a **left**-child step (`|prefix| = p`, child `= P[p..p+cs]`,
+  suffix `= P[p+cs..]`) and as a **right**-child step (`|prefix| = p+cs`, child
+  `= P[p+cs..p+2cs]`, suffix empty) — both satisfy the prefix window
+  `[min, max + (n-1)·cs] = [p, p+cs]` and the `suffix % cs = 0` check. So the same
+  node hash does not, by the spec checks alone, determine which half is the
+  recursive child.
+  - Consequence: the clean "two accepted existence proofs that disagree ⇒ exhibit
+    a hash *collision*" reduction does **not** go through for differing tree
+    positions against an *arbitrary* hash `H`. An adversary exploiting the
+    ambiguity would need the sibling bytes to themselves be a valid
+    subtree/leaf hash of a different value — a **preimage** problem, not a
+    collision. Against an arbitrary `H` that is not ruled out; the honest model
+    must therefore either (a) treat hashes as injective/opaque tokens (a
+    structured/"free" hash model) or assume preimage resistance, or (b) re-include
+    the per-store prefix structure the model abstracts away — notably IAVL's
+    `ensure_inner_prefix`, which encodes `height/size/version` and pins the
+    position explicitly. The **same-shape** binding theorem (already proved) sits
+    below this obstacle because it fixes the path structure.
+  - Action: this is why `existence_binding` (general) is still open. The next
+    step is the model refinement above, not a tactic tweak. No evidence of a live
+    exploit against the shipped stores; flagged for maintainer review.
 - **F2 — left/right empty-branch asymmetry (ternary+ specs).**
   `right_branches_are_empty` guards `suffix.len() == child_size` (one child) but
   then reads `suffix[i*child_size..]` for `i in 0..right_branches`. For

@@ -94,4 +94,32 @@ def nexForgery : NonExistenceProof := { key := [0x01], left := some exA, right :
 example : verifyNonExistence concreteHash nexForgery tendermintSpec tmRoot [0x01] = false := by
   native_decide
 
+/-! ## Finding F3, machine-checked: positional ambiguity of a node hash
+
+For the Tendermint spec the 65-byte preimage `[1] ‖ A ‖ B` is accepted by
+`ensure_inner` both as a **left**-child step (child `A`, sibling `B` in the
+suffix) and as a **right**-child step (child `B`, sibling `A` in the prefix).
+Both readings produce the *same* node hash from *different* children — so the
+spec checks alone do not pin a node's recursive child. See
+`docs/verification/properties.md` (F3): this is why general `existence_binding`
+needs more than collision resistance. -/
+
+def ambA : Bytes := List.replicate 32 1
+def ambB : Bytes := List.replicate 32 2
+
+/-- Left-child reading of the node. -/
+def opLeft : InnerOp := { hash := .sha256, prefixBytes := [1], suffix := ambB }
+
+/-- Right-child reading of the *same* node bytes. -/
+def opRight : InnerOp := { hash := .sha256, prefixBytes := [1] ++ ambA, suffix := [] }
+
+example : ensureInner opLeft tendermintSpec = true := by native_decide
+example : ensureInner opRight tendermintSpec = true := by native_decide
+
+/-- The two accepted readings hash to the same node from different children. -/
+example : applyInner concreteHash opLeft ambA = applyInner concreteHash opRight ambB := by
+  native_decide
+
+example : ambA ≠ ambB := by native_decide
+
 end Ics23
