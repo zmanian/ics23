@@ -119,9 +119,38 @@ Concrete malicious proofs, each targeting one invariant. To be encoded as Lean
 - [ ] **depth-bounds:** `min_depth ≠ 0` with path length outside `[min, max]`.
 - [ ] (from Zellic / Dragonberry — to be added once transcribed.)
 
-## Open items
+## Proof status (Lean)
 
-- Transcribe Zellic findings into Properties / corpus.
-- Model the non-existence verifier and state Theorem B.
-- Decide whether batch/compressed verification is in the proof scope or only the
-  oracle (RFC open question 3).
+Model is complete (existence + non-existence). Proved with no `sorry`:
+Theorem C (all three spec certificates); A1 leaf-encoding injectivity for both
+`NoPrefix` (fixed-prehash) and `VarProto` (varint self-delimiting) shapes;
+the path-fold backbone (`applyInner_inj`, `applyPath_sameops_inj`); and
+**same-shape existence binding for all three shipped specs**
+(`existence_binding_sameshape{,_noPrefix,_varProto}`). Non-existence padding /
+empty-branch logic is exercised by the corpus.
+
+### Remaining obligations
+
+1. **General Theorem A — differing-path case (the one `sorry`).** Drop the
+   `hpathEq`/`hleafEq` assumptions from `existence_binding_sameshape`. The crux:
+   at a node where two proofs' inner ops differ but produce equal images
+   (`op₁.prefix ++ c₁ ++ op₁.suffix = op₂.prefix ++ c₂ ++ op₂.suffix`),
+   `WellFormed` + `ensureInner` (prefix window, `suffix % child_size = 0`,
+   `max < min + child_size`) must force `op₁ = op₂` and `c₁ = c₂` (positional
+   unambiguity, A3) — else a collision. This is the hardest piece; prove the
+   positional lemma first in isolation, binary specs first.
+2. **Theorem B (non-existence soundness).** Formalize the ordered-tree semantics
+   an `InnerSpec` describes (left-most / right-most / adjacency under
+   `child_order`, `empty_child` for sparse trees), then prove: an accepted
+   non-existence proof for `k` plus an accepted existence proof for `k` ⇒
+   collision. Respect `prehash_key_before_comparison` (guarantee is over hashed
+   keys for SMT/JMT).
+3. **Transcribe Zellic findings** into Properties / corpus.
+4. **Batch/compressed** verification — model + decide whether in proof scope
+   (RFC open question 3).
+
+## Open items (cross-phase)
+
+- Phase 2a differential oracle (needs a concrete `HashFn` / sha256 in Lean or an
+  FFI bridge to run the model against `testdata/`).
+- Phase 3 Kani harnesses for Rust panic/overflow safety.

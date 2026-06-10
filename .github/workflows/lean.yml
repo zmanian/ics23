@@ -1,0 +1,48 @@
+name: Lean
+
+on:
+  pull_request:
+    paths:
+      - lean/**
+      - .github/workflows/lean.yml
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build proofs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://elan.lean-lang.org/elan-init.sh \
+            -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Build (checks all proofs)
+        working-directory: ./lean
+        run: lake build
+
+      - name: Fail on unexpected sorry
+        working-directory: ./lean
+        run: |
+          # Exactly one sorry is expected: the general `existence_binding` whose
+          # differing-path case is still being landed. Fail if any others appear.
+          count=$(grep -rn --include='*.lean' '^\s*sorry\b\|:= sorry\| sorry$' Ics23 | wc -l | tr -d ' ')
+          echo "sorry count: $count"
+          if [ "$count" -ne 1 ]; then
+            echo "Unexpected number of sorry occurrences (expected 1)."
+            grep -rn --include='*.lean' '^\s*sorry\b\|:= sorry\| sorry$' Ics23 || true
+            exit 1
+          fi
