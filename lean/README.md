@@ -32,12 +32,26 @@ collision-resistance assumption: soundness theorems conclude by exhibiting a
 `HashCollision`. See the modeling-assumptions section of the property catalogue
 for where (and why) the model intentionally differs from the Rust.
 
+| `Ics23/NonExist.lean` | `rust/src/verify.rs` | non-existence verifier |
+| `Ics23/Corpus.lean` | — | regression corpus (proven accept/reject facts) |
+
 ## Status
 
-- **Proved:** spec well-formedness certificates for the three shipped specs
-  (`iavl_wellFormed`, `tendermint_wellFormed`, `smt_wellFormed`); the inner
-  preimage cancellation lemma (`innerImage_inj`).
+- **Model complete:** existence and non-existence verifiers, both executable
+  over an abstract hash family.
+- **Proved:**
+  - Spec well-formedness certificates for all three shipped specs (Theorem C:
+    `iavl_wellFormed`, `tendermint_wellFormed`, `smt_wellFormed`).
+  - Regression corpus: spec-level invariant violations (domain separation,
+    child-size, prefix-window, malformed specs, depth bounds) as machine-checked
+    facts (`Ics23/Corpus.lean`).
+  - Building blocks of Theorem A: `innerImage_inj` (preimage cancellation),
+    `applyInner_inj` (one step injective up to a collision), and
+    `applyPath_sameops_inj` (folding a shared op-list is injective up to a
+    collision) — the inductive backbone.
 - **Stated, proof in progress:** Theorem A, existence binding
-  (`existence_binding`).
-- **Next:** model the non-existence verifier and state Theorem B; complete
-  Theorem A; build the differential oracle (Phase 2a).
+  (`existence_binding`). Remaining gap: leaf-encoding injectivity (A1) and the
+  differing-path-structure case, which need the positional-unambiguity
+  arithmetic (A3).
+- **Next:** finish Theorem A; state and prove Theorem B (non-existence
+  soundness); build the differential oracle (Phase 2a).

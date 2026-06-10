@@ -120,6 +120,67 @@ theorem hasPrefix_refl (b : Bytes) : hasPrefix b b = true := by
   unfold hasPrefix
   simp
 
+/-- Packaging a witnessed clash as a `HashCollision`. -/
+theorem hashCollision_of (H : HashFn) (op : HashOp) (a b : Bytes)
+    (hne : a ≠ b) (heq : H op a = H op b) : HashCollision H :=
+  ⟨op, a, b, hne, heq⟩
+
+/-- The core inductive step of existence binding: one inner step is injective in
+its child *up to a collision*. If two children hash to the same node under the
+same inner op, then either the children are equal or the differing preimages
+are an explicit collision. -/
+theorem applyInner_inj (H : HashFn) (op : InnerOp) (c₁ c₂ r : Bytes)
+    (h1 : applyInner H op c₁ = some r) (h2 : applyInner H op c₂ = some r) :
+    c₁ = c₂ ∨ HashCollision H := by
+  by_cases e1 : c₁.isEmpty = true
+  · rw [applyInner, if_pos e1] at h1; simp at h1
+  · by_cases e2 : c₂.isEmpty = true
+    · rw [applyInner, if_pos e2] at h2; simp at h2
+    · rw [applyInner, if_neg e1] at h1
+      rw [applyInner, if_neg e2] at h2
+      have hi1 := Option.some.inj h1
+      have hi2 := Option.some.inj h2
+      by_cases himg :
+          op.prefixBytes ++ c₁ ++ op.suffix = op.prefixBytes ++ c₂ ++ op.suffix
+      · exact Or.inl ((innerImage_inj op c₁ c₂).mp himg)
+      · exact Or.inr (hashCollision_of H op.hash _ _ himg (hi1.trans hi2.symm))
+
+/-- Folding the *same* op-list over two starting hashes to the same root forces
+the starting hashes equal, up to a collision. This is the inductive backbone of
+existence binding for the shared portion of two proof paths. -/
+theorem applyPath_sameops_inj (H : HashFn) (isp : InnerSpec) :
+    ∀ (path : List InnerOp) (h₁ h₂ r : Bytes),
+      applyPath H isp h₁ path = some r →
+      applyPath H isp h₂ path = some r →
+      h₁ = h₂ ∨ HashCollision H := by
+  intro path
+  induction path with
+  | nil =>
+    intro h₁ h₂ r e1 e2
+    simp only [applyPath, Option.some.injEq] at e1 e2
+    exact Or.inl (e1.trans e2.symm)
+  | cons step rest ih =>
+    intro h₁ h₂ r e1 e2
+    simp only [applyPath] at e1 e2
+    cases hA1 : applyInner H step h₁ with
+    | none => simp [hA1] at e1
+    | some h₁' =>
+      cases hA2 : applyInner H step h₂ with
+      | none => simp [hA2] at e2
+      | some h₂' =>
+        simp only [hA1] at e1
+        simp only [hA2] at e2
+        by_cases g1 : (h₁'.length : Int) > isp.childSize ∧ isp.childSize ≥ 32
+        · simp [g1] at e1
+        · by_cases g2 : (h₂'.length : Int) > isp.childSize ∧ isp.childSize ≥ 32
+          · simp [g2] at e2
+          · rw [if_neg g1] at e1
+            rw [if_neg g2] at e2
+            rcases ih h₁' h₂' r e1 e2 with hh | hc
+            · subst hh
+              exact applyInner_inj H step h₁ h₂ h₁' hA1 hA2
+            · exact Or.inr hc
+
 /-! ## Theorem A: existence binding (soundness)
 
 A single root cannot bind one key to two different values without a hash
