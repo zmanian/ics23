@@ -151,6 +151,10 @@ empty-branch logic is exercised by the corpus.
 
 ## Open items (cross-phase)
 
-- Phase 2a differential oracle (needs a concrete `HashFn` / sha256 in Lean or an
-  FFI bridge to run the model against `testdata/`).
+- Phase 2a differential oracle. The executable model now exists — a validated
+  pure-Lean SHA-256 (`lean/Ics23/Sha256.lean`) and `concreteHash`, with
+  end-to-end runs in `lean/Ics23/Executable.lean` (existence and non-existence,
+  including forgery rejection). Remaining: feed it the `testdata/` vectors the
+  Rust/Go suites use (needs a protobuf→simple-JSON bridge and a Lean reader) and
+  compare accept/reject across all three implementations in CI.
 - Phase 3 Kani harnesses for Rust panic/overflow safety.
