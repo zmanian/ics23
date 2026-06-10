@@ -129,6 +129,21 @@ Concrete malicious proofs, each targeting one invariant. To be encoded as Lean
 - [ ] **depth-bounds:** `min_depth ≠ 0` with path length outside `[min, max]`.
 - [ ] (from Zellic / Dragonberry — to be added once transcribed.)
 
+## Findings (surfaced by the verification work)
+
+- **F1 — i32 prefix-bound overflow (malformed spec).** `ensure_inner` computes
+  `max_prefix_length + (child_order.len()-1)*child_size` in `i32`; an adversarial
+  spec with an enormous `child_size` overflows it. Not reachable with the shipped
+  specs; the Kani harness pins the safe precondition.
+- **F2 — left/right empty-branch asymmetry (ternary+ specs).**
+  `right_branches_are_empty` guards `suffix.len() == child_size` (one child) but
+  then reads `suffix[i*child_size..]` for `i in 0..right_branches`. For
+  `child_order.len() > 2`, `right_branches` can exceed 1, so the `i = 1` access is
+  out of bounds — a panic. The left side correctly sizes the prefix by
+  `left_branches*child_size`. No supported store is ternary (merk is unsupported),
+  so this is latent, not currently exploitable. Surfaced while writing the Kani
+  harnesses; the binary-case harness is verified.
+
 ## Proof status (Lean)
 
 Model is complete (existence + non-existence). Proved with no `sorry`:

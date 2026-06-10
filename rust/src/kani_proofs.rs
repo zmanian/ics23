@@ -75,3 +75,35 @@ fn left_branches_slice_in_bounds() {
         }
     }
 }
+
+/// `right_branches_are_empty` guards `op.suffix.len() == child_size` (a *single*
+/// child) but then reads `op.suffix[i*child_size .. (i+1)*child_size]` for
+/// `i in 0..right_branches`. For binary specs (`child_order.len() == 2`,
+/// `right_branches <= 1`) the only access is `i = 0`, which is in bounds — this
+/// covers all currently supported stores (IAVL/Tendermint/SMT).
+///
+/// NOTE (finding): for a spec with `child_order.len() > 2`, `right_branches`
+/// can exceed 1 while the guard still admits a `child_size`-long suffix, so the
+/// `i = 1` access would be out of bounds (a panic). The left/right empty-branch
+/// checks are asymmetric: the left side sizes the prefix by
+/// `left_branches * child_size`, the right side only checks a single
+/// `child_size`. No supported store is ternary, but this is latent. See
+/// `docs/verification/properties.md`.
+#[kani::proof]
+#[kani::unwind(2)]
+fn right_branches_slice_in_bounds_binary() {
+    let child_size: usize = kani::any();
+    let suffix_len: usize = kani::any();
+    let right_branches: usize = kani::any();
+    kani::assume((1..=64).contains(&child_size));
+    kani::assume(right_branches == 1); // binary spec: at most one right sibling
+    kani::assume(suffix_len == child_size); // the `suffix.len() == child_size` guard
+
+    let mut i = 0usize;
+    while i < right_branches {
+        let from = i * child_size;
+        // models `op.suffix[from .. from + child_size]`
+        assert!(from + child_size <= suffix_len, "right-branch slice in bounds (binary)");
+        i += 1;
+    }
+}
