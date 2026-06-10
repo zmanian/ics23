@@ -65,7 +65,12 @@ for where (and why) the model intentionally differs from the Rust.
     differing-path-structure case (positional unambiguity, A3);
   - Theorem B, non-existence soundness (`nonexistence_sound`) — needs the
     ordered-tree semantics an `InnerSpec` describes.
+- **Executable end to end:** a concrete SHA-256 (`Sha256.lean`, validated
+  against the vectors in `rust/src/ops.rs`) and `concreteHash` make the verifier
+  runnable; `Executable.lean` computes real roots and refutes value-swap /
+  wrong-shape forgeries by `native_decide`. This is the seed of the Phase 2a
+  differential oracle.
 - **CI:** `.github/workflows/lean.yml` builds all proofs and fails if any
   unexpected `sorry` appears (exactly two are whitelisted).
-- **Next:** close Theorem A's differing-path case; prove Theorem B; build the
-  differential oracle (Phase 2a).
+- **Next:** close Theorem A's differing-path case; prove Theorem B; drive the
+  executable model against the Rust/Go implementations (Phase 2a).
