@@ -49,13 +49,17 @@ for where (and why) the model intentionally differs from the Rust.
     `applyInner_inj` (one step injective up to a collision), and
     `applyPath_sameops_inj` (folding a shared op-list is injective up to a
     collision) — the inductive backbone.
-  - **A fully-proved fragment of Theorem A**:
-    `existence_binding_noPrefix_sameshape` (`Existence.lean`) — binding for
-    `NoPrefix`-length specs (the SMT/JMT shape) when the two proofs share tree
-    shape. Covers the common value-swap forgery end to end.
-- **Stated, proof in progress:** the *general* Theorem A, existence binding
-  (`existence_binding`). Remaining gap beyond the proved fragment: the varint
-  self-delimiting argument (A1 for length-prefixed IAVL/Tendermint specs) and
-  the differing-path-structure case (positional unambiguity, A3).
+  - The varint length prefix is self-delimiting (`varintEncode_append_inj`,
+    `Varint.lean`), giving leaf-encoding injectivity (A1) for length-prefixed
+    specs; `doLength_varProto_inj` / `doLength_noPrefix_inj`.
+  - **Same-shape existence binding (Theorem A) for all three shipped leaf
+    shapes**: `existence_binding_sameshape` (general, parameterized by length
+    injectivity) with corollaries `existence_binding_sameshape_noPrefix` (SMT/
+    JMT) and `existence_binding_sameshape_varProto` (IAVL / Tendermint). Two
+    proofs sharing tree shape that bind one key to two values force a hash
+    collision — the value-swap forgery, end to end.
+- **Stated, proof in progress:** the *general* Theorem A (`existence_binding`),
+  whose only remaining gap is the differing-path-structure case (positional
+  unambiguity, A3) — equal node images under differing inner ops.
 - **Next:** finish Theorem A; state and prove Theorem B (non-existence
   soundness); build the differential oracle (Phase 2a).
