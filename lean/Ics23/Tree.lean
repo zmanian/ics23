@@ -231,6 +231,30 @@ theorem split_bounds (op : InnerOp) (s : ProofSpec) (cs p : Nat)
       rw [Int.natCast_emod]; exact hc7
     exact_mod_cast this
 
+/-- A node split with empty suffix is the *right* child (`ensure_right_most`). -/
+theorem split_right (pre lh rh topPre m topSuf : Bytes) (cs : Nat)
+    (hN : topPre ++ m ++ topSuf = pre ++ lh ++ rh)
+    (hlh : lh.length = cs) (hrh : rh.length = cs) (hm : m.length = cs)
+    (hsuf0 : topSuf.length = 0) : m = rh := by
+  have hsnil : topSuf = [] := List.length_eq_zero_iff.mp hsuf0
+  rw [hsnil, List.append_nil] at hN
+  have hlen : topPre.length = (pre ++ lh).length := by
+    have h := congrArg List.length hN
+    simp only [List.length_append] at h ⊢; omega
+  exact (List.append_inj hN hlen).2
+
+/-- A node split with a full `cs`-length suffix is the *left* child
+(`ensure_left_most`). -/
+theorem split_left (pre lh rh topPre m topSuf : Bytes) (cs : Nat)
+    (hN : topPre ++ m ++ topSuf = pre ++ lh ++ rh)
+    (hpre : pre.length ≤ topPre.length) (hlh : lh.length = cs) (hrh : rh.length = cs)
+    (hm : m.length = cs) (hsuf : topSuf.length = cs) : m = lh := by
+  have hlen : topPre.length = pre.length := by
+    have h := congrArg List.length hN
+    simp only [List.length_append] at h; omega
+  simp only [List.append_assoc] at hN
+  exact (List.append_inj (List.append_inj hN hlen).2 (by rw [hm, hlh])).1
+
 /-- Core induction: a proof whose leaf hash folds to a real tree's root reaches a
 genuine leaf — using `split_pins` to force each step into a real child. -/
 theorem reaches (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
