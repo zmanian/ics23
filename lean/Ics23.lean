@@ -5,6 +5,7 @@ import Ics23.Ops
 import Ics23.Verify
 import Ics23.NonExist
 import Ics23.Varint
+import Ics23.IavlPrefix
 import Ics23.Specs
 import Ics23.Soundness
 import Ics23.Existence

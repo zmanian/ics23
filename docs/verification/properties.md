@@ -158,8 +158,21 @@ Concrete malicious proofs, each targeting one invariant. To be encoded as Lean
     `ensure_inner_prefix`, which encodes `height/size/version` and pins the
     position explicitly. The **same-shape** binding theorem (already proved) sits
     below this obstacle because it fixes the path structure.
-  - Action: this is why `existence_binding` (general) is still open. The next
-    step is the model refinement above, not a tactic tweak. No evidence of a live
+  - **The IAVL prefix check does *not* fix it (machine-checked).** Re-including
+    `ensure_inner_prefix` (height/size/version + remaining-byte count) was the
+    natural candidate to pin position. It does not: for the IAVL preimage
+    `hsv ‖ 0x20 ‖ A ‖ 0x20 ‖ B`, the left reading leaves `remaining = 1` and the
+    right reading leaves `remaining = 34`, and the check explicitly admits *both*
+    (see `lean/Ics23/IavlPrefix.lean`, `native_decide` witnesses). So the
+    ambiguity is intrinsic to the prefix/suffix construction across all shipped
+    specs, IAVL included. Binding genuinely rests on **preimage resistance** (the
+    sibling bytes would have to be a valid subtree hash of a different value),
+    which the abstract-hash model does not capture.
+  - Action: this is why `existence_binding` (general) is still open. The correct
+    fix is a hash-model refinement — model node hashes as opaque/injective tokens
+    (a symbolic Merkle model) so sibling bytes cannot be re-read as a subtree
+    hash — or weaken the theorem's conclusion to "collision OR preimage". This is
+    a foundational reformulation, not a tactic tweak. No evidence of a live
     exploit against the shipped stores; flagged for maintainer review.
 - **F2 — left/right empty-branch asymmetry (ternary+ specs).**
   `right_branches_are_empty` guards `suffix.len() == child_size` (one child) but
