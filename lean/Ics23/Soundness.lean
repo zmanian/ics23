@@ -125,6 +125,18 @@ theorem hashCollision_of (H : HashFn) (op : HashOp) (a b : Bytes)
     (hne : a ≠ b) (heq : H op a = H op b) : HashCollision H :=
   ⟨op, a, b, hne, heq⟩
 
+/-- Leaf/inner domain separation as a collision: if a leaf preimage (starting
+with the leaf prefix byte `b`) and an inner preimage (not starting with `b`) hash
+to the same value under the same op, that is a collision. This discharges the
+length-mismatch case of binding, where a short proof's leaf hash meets a long
+proof's intermediate node hash. -/
+theorem leaf_inner_domain_collision (H : HashFn) (op : HashOp)
+    (lpre ipre : Bytes) (b : UInt8)
+    (hl0 : lpre.head? = some b) (hi0 : ipre.head? ≠ some b)
+    (heq : H op lpre = H op ipre) : HashCollision H := by
+  refine hashCollision_of H op lpre ipre ?_ heq
+  intro hpe; rw [hpe] at hl0; exact hi0 hl0
+
 /-- The core inductive step of existence binding: one inner step is injective in
 its child *up to a collision*. If two children hash to the same node under the
 same inner op, then either the children are equal or the differing preimages
