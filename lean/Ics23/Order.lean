@@ -1,0 +1,118 @@
+/-
+Ordered-tree position semantics — the foundation for non-existence soundness
+(Theorem B). A path determines a leaf's position via the branch each inner op
+takes (`order_from_padding`). This file begins connecting the path-structure
+checks (`ensure_left_most` / `ensure_right_most`) to those positions.
+
+Scoped first to specs with **no empty children** (`empty_child = []`), which
+covers IAVL and Tendermint; there the placeholder logic never fires, so the
+checks reduce cleanly to "every step is the leftmost / rightmost branch".
+-/
+import Ics23.NonExist
+
+namespace Ics23
+
+/-- A successful `byteRange` returns a slice of exactly the requested length. -/
+theorem byteRange_length (data : Bytes) (start len : Nat) (s : Bytes)
+    (h : byteRange data start len = some s) : s.length = len := by
+  unfold byteRange at h
+  by_cases hb : start + len ≤ data.length
+  · rw [if_pos hb] at h
+    injection h with hs
+    rw [← hs, List.length_take, List.length_drop]
+    omega
+  · rw [if_neg hb] at h; exact absurd h (by simp)
+
+/-- With no empty children and positive child size, a step is never a (left)
+empty placeholder. -/
+theorem leftBranchesAreEmpty_false_of_noEmpty (isp : InnerSpec) (op : InnerOp)
+    (hempty : isp.emptyChild = []) (hcs : isp.childSize > 0) :
+    leftBranchesAreEmpty isp op = false := by
+  unfold leftBranchesAreEmpty
+  cases h : orderFromPadding isp op with
+  | none => rfl
+  | some idx =>
+    by_cases h0 : idx = 0
+    · simp [h0]
+    · simp only [h0, if_false]
+      by_cases hlen : op.prefixBytes.length < idx * isp.childSize.toNat
+      · simp [hlen]
+      · simp only [hlen, if_false]
+        have hcsn : 0 < isp.childSize.toNat := by omega
+        rw [List.all_eq_false]
+        refine ⟨0, by simp only [List.mem_range]; omega, ?_⟩
+        simp only [hempty]
+        cases hbr : byteRange op.prefixBytes
+            (op.prefixBytes.length - idx * isp.childSize.toNat + 0 * isp.childSize.toNat)
+            isp.childSize.toNat with
+        | none => decide
+        | some s =>
+          have hsl := byteRange_length _ _ _ _ hbr
+          simp only [beq_iff_eq, Option.some.injEq]
+          intro hse
+          rw [hse, List.length_nil] at hsl
+          omega
+
+/-- For a spec with no empty children, `ensure_left_most` forces every step to
+match the left-branch (branch 0) padding — i.e. every step is a genuine left
+child. The first ordered-tree-position fact. -/
+theorem ensureLeftMost_allLeftPadding (isp : InnerSpec) (path : List InnerOp)
+    (hempty : isp.emptyChild = []) (hcs : isp.childSize > 0)
+    (h : ensureLeftMost isp path = true) :
+    ∀ op ∈ path, ∃ pad, getPadding isp 0 = some pad ∧ hasPadding op pad = true := by
+  unfold ensureLeftMost at h
+  cases hpad : getPadding isp 0 with
+  | none => rw [hpad] at h; exact absurd h (by simp)
+  | some pad =>
+    rw [hpad] at h
+    intro op hop
+    have hstep := (List.all_eq_true.mp h) op hop
+    rw [leftBranchesAreEmpty_false_of_noEmpty isp op hempty hcs, Bool.or_false] at hstep
+    exact ⟨pad, rfl, hstep⟩
+
+/-- Symmetric fact: with no empty children, a step is never a (right) empty
+placeholder. -/
+theorem rightBranchesAreEmpty_false_of_noEmpty (isp : InnerSpec) (op : InnerOp)
+    (hempty : isp.emptyChild = []) (hcs : isp.childSize > 0) :
+    rightBranchesAreEmpty isp op = false := by
+  unfold rightBranchesAreEmpty
+  cases h : orderFromPadding isp op with
+  | none => rfl
+  | some idx =>
+    by_cases h0 : isp.childOrder.length - 1 - idx = 0
+    · simp [h0]
+    · simp only [h0, if_false]
+      by_cases hsuf : op.suffix.length ≠ isp.childSize.toNat
+      · simp [hsuf]
+      · simp only [hsuf, if_false] at *
+        have hcsn : 0 < isp.childSize.toNat := by omega
+        rw [List.all_eq_false]
+        refine ⟨0, by simp only [List.mem_range]; omega, ?_⟩
+        simp only [hempty]
+        cases hbr : byteRange op.suffix (0 * isp.childSize.toNat) isp.childSize.toNat with
+        | none => decide
+        | some s =>
+          have hsl := byteRange_length _ _ _ _ hbr
+          simp only [beq_iff_eq, Option.some.injEq]
+          intro hse
+          rw [hse, List.length_nil] at hsl
+          omega
+
+/-- `ensure_right_most` analogue: every step matches the right-branch padding. -/
+theorem ensureRightMost_allRightPadding (isp : InnerSpec) (path : List InnerOp)
+    (hempty : isp.emptyChild = []) (hcs : isp.childSize > 0)
+    (h : ensureRightMost isp path = true) :
+    ∀ op ∈ path, ∃ pad, getPadding isp (isp.childOrder.length - 1) = some pad ∧
+      hasPadding op pad = true := by
+  unfold ensureRightMost at h
+  cases hpad : getPadding isp (isp.childOrder.length - 1) with
+  | none => rw [hpad] at h; exact absurd h (by simp)
+  | some pad =>
+    rw [hpad] at h
+    intro op hop
+    have hstep := (List.all_eq_true.mp h) op hop
+    rw [rightBranchesAreEmpty_false_of_noEmpty isp op hempty hcs, Bool.or_false] at hstep
+    exact ⟨pad, rfl, hstep⟩
+
+end Ics23
+
