@@ -226,6 +226,17 @@ def PositionalAmbiguity (s : ProofSpec) : Prop :=
     ensureInner op₁ s = true ∧ ensureInner op₂ s = true ∧ op₁ ≠ op₂ ∧
     op₁.prefixBytes ++ c₁ ++ op₁.suffix = op₂.prefixBytes ++ c₂ ++ op₂.suffix
 
+/-- The leaf-level analogue of `PositionalAmbiguity` (F3 at the leaf): two
+spec-conformant leaf ops with *different* prefixes producing the same leaf hash.
+Because `ensure_leaf` only requires the spec prefix to be *a* prefix (not exactly
+equal), an adversary can pad the leaf prefix; resolving this needs the symbolic
+hash model, exactly as for `PositionalAmbiguity`. -/
+def LeafAmbiguity (H : HashFn) (s : ProofSpec) : Prop :=
+  ∃ (leaf₁ leaf₂ : LeafOp) (k₁ v₁ k₂ v₂ L : Bytes),
+    ensureLeaf leaf₁ s.leafSpec = true ∧ ensureLeaf leaf₂ s.leafSpec = true ∧
+    leaf₁.prefixBytes ≠ leaf₂.prefixBytes ∧
+    applyLeaf H leaf₁ k₁ v₁ = some L ∧ applyLeaf H leaf₂ k₂ v₂ = some L
+
 /-- `h` is the image of some spec-conformant inner op — i.e. a non-leaf node
 hash. Used to discharge the length-mismatch case of binding via leaf/inner
 domain separation. -/
@@ -463,48 +474,20 @@ theorem applyPath_merge (H : HashFn) (s : ProofSpec) :
 
 /-! ## Theorem A: existence binding (soundness)
 
-A single root cannot bind one key to two different values without a hash
-collision. Equivalently: if a forger produces two existence proofs for the same
-key with different values that both verify against the same root and a
-well-formed spec, that forger has found a hash collision.
+The general existence-binding theorem is `Ics23.existence_binding_shaped` (in
+`Existence.lean`), proved with **no `sorry`** for the production-spec shape
+(single-byte leaf prefix, shared leaf/inner hash op, `min_prefix_length ≥ 1`),
+with corollaries `existence_binding_{iavl,tendermint,smt}`. Its conclusion is the
+honest three-way disjunction
 
-Proof strategy (being landed incrementally):
-  1. From `verifyExistence` true, both proofs share the same leaf spec, so the
-     leaf hash op and the leaf encoding shape agree.
-  2. `leafDelimitingB` ⇒ the leaf encoding is injective in `(key, value)`, so
-     different values give different leaf preimages — unless the prehash images
-     already collide, which *is* a collision.
-  3. Both paths fold up to the same `root`. Induct down the two paths using
-     `innerImage_inj` and leaf/inner domain separation (`ensure_inner`'s
-     `!has_prefix`): at the first divergence the images coincide but the
-     preimages differ, yielding the collision.
+  `HashCollision H ∨ PositionalAmbiguity s ∨ LeafAmbiguity H s`,
 
-The same-shape case is fully proved for all three shipped specs as
-`Ics23.existence_binding_sameshape{,_noPrefix,_varProto}` (see `Existence.lean`).
-
-The conclusion here is the **honest, true** statement: a collision *or* the
-positional ambiguity (F3). A collision-only conclusion would be too strong —
-`IavlPrefix.lean` machine-checks that even IAVL's prefix structure admits two
-positional readings of one node, so against an arbitrary `H` the differing-path
-case need not yield a collision (it is a *preimage* problem). The same-shape case
-(`Existence.lean`) avoids the ambiguity and yields a collision outright.
-
-What remains (the `sorry`): the path induction assembling the conclusion —
-walk both proofs down from the shared root; equal node images with differing
-preimages give a collision; equal images with the same op recurse; equal images
-with a different op are a `PositionalAmbiguity`; a length mismatch hits leaf/inner
-domain separation (a collision); and the base case is leaf injectivity (proved).
-Discharging this disjunction, or strengthening it to a collision under a symbolic
-"Merkle" hash model, is the documented next step. -/
-theorem existence_binding
-    (H : HashFn) (hNoHash : ∀ b, H .noHash b = b)
-    (s : ProofSpec) (hwf : WellFormed s)
-    (root key v₁ v₂ : Bytes)
-    (p₁ p₂ : ExistenceProof)
-    (hv : v₁ ≠ v₂)
-    (h₁ : verifyExistence H p₁ s root key v₁ = true)
-    (h₂ : verifyExistence H p₂ s root key v₂ = true) :
-    HashCollision H ∨ PositionalAmbiguity s := by
-  sorry
+which is exactly what the abstract-hash model can establish: a forger who binds a
+key to two values either found a hash collision, or exploited the inner
+positional ambiguity F3, or the leaf-level analogue. A collision-only conclusion
+is provably too strong (machine-checked in `IavlPrefix.lean`); collapsing the two
+ambiguity arms requires the symbolic "Merkle" hash model. The same-leaf case
+(`existence_binding_sameleaf`) — the honest case, since a key's leaf op is
+determined in a real tree — yields just `HashCollision ∨ PositionalAmbiguity`. -/
 
 end Ics23

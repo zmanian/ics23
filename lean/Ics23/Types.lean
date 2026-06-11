@@ -55,6 +55,10 @@ inductive LengthOp where
   | fixed64Little
   deriving Repr, DecidableEq, BEq, Inhabited
 
+instance : LawfulBEq LengthOp where
+  eq_of_beq {a b} h := by cases a <;> cases b <;> first | rfl | exact absurd h (by decide)
+  rfl {a} := by cases a <;> rfl
+
 /-- `LeafOp`: how a (key, value) pair is transformed into a leaf hash. -/
 structure LeafOp where
   hash : HashOp

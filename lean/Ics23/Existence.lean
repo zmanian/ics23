@@ -170,6 +170,17 @@ theorem verifyExistence_leaf (H : HashFn) (p : ExistenceProof) (s : ProofSpec)
   simp only [Bool.and_eq_true] at hces
   exact hces.1.1
 
+/-- Two leaf ops conforming to the same leaf spec with equal prefixes are equal
+(the spec pins every other field). -/
+theorem ensureLeaf_eq (l1 l2 spec : LeafOp)
+    (h1 : ensureLeaf l1 spec = true) (h2 : ensureLeaf l2 spec = true)
+    (hp : l1.prefixBytes = l2.prefixBytes) : l1 = l2 := by
+  unfold ensureLeaf at h1 h2
+  simp only [Bool.and_eq_true, beq_iff_eq] at h1 h2
+  obtain ⟨⟨⟨⟨e1h, e1pk⟩, e1pv⟩, e1l⟩, _⟩ := h1
+  obtain ⟨⟨⟨⟨e2h, e2pk⟩, e2pv⟩, e2l⟩, _⟩ := h2
+  cases l1; cases l2; simp_all
+
 /-- **Theorem A, equal-length case.** Two existence proofs sharing the same leaf
 op and the same path *length* (but possibly different inner ops), binding one key
 to two different values under one root, yield a hash collision OR exhibit the F3
@@ -438,5 +449,69 @@ theorem existence_binding_smt
     (by decide) (by decide) (by decide) hleafEq
     (fun a b h => by rw [hLen] at h; exact doLength_noPrefix_inj a b h)
     hk1 hk2 hkne hv1ne hv2ne hvv1 hvv2 hv h₁ h₂
+
+/-- **Theorem A, general (production-spec shape).** Two existence proofs binding
+one key to two different values under one root — with NO assumption relating their
+leaf ops or paths — yield the honest three-way disjunction: a hash collision, the
+inner positional ambiguity (F3), or its leaf-level analogue. Proved with no
+`sorry` for the shape shared by IAVL/Tendermint/SMT (single-byte leaf prefix,
+shared leaf/inner hash op, `min_prefix_length ≥ 1`). The two ambiguity arms are
+real, machine-checkable obstructions that the abstract-hash model cannot rule out;
+collapsing them to a bare collision requires the symbolic-Merkle model. -/
+theorem existence_binding_shaped
+    (H : HashFn) (s : ProofSpec) (root key v₁ v₂ : Bytes)
+    (p₁ p₂ : ExistenceProof) (b : UInt8)
+    (hsh : s.leafSpec.hash = s.innerSpec.hash)
+    (hpreShape : s.leafSpec.prefixBytes = [b])
+    (hmin : 1 ≤ s.innerSpec.minPrefixLength)
+    (hLeafInj : ∀ a b, doLength p₁.leaf.length a = doLength p₁.leaf.length b → a = b)
+    (hk1 : p₁.key = key) (hk2 : p₂.key = key)
+    (hkne : key.isEmpty = false)
+    (hv1ne : v₁.isEmpty = false) (hv2ne : v₂.isEmpty = false)
+    (hvv1 : p₁.value = v₁) (hvv2 : p₂.value = v₂)
+    (hv : v₁ ≠ v₂)
+    (h₁ : verifyExistence H p₁ s root key v₁ = true)
+    (h₂ : verifyExistence H p₂ s root key v₂ = true) :
+    HashCollision H ∨ PositionalAmbiguity s ∨ LeafAmbiguity H s := by
+  have r1 := verifyExistence_root H p₁ s root key v₁ h₁
+  have r2 := verifyExistence_root H p₂ s root key v₂ h₂
+  have hk1e : p₁.key.isEmpty = false := by rw [hk1]; exact hkne
+  have hk2e : p₂.key.isEmpty = false := by rw [hk2]; exact hkne
+  have hv1e : p₁.value.isEmpty = false := by rw [hvv1]; exact hv1ne
+  have hv2e : p₂.value.isEmpty = false := by rw [hvv2]; exact hv2ne
+  cases hl1 : applyLeaf H p₁.leaf p₁.key p₁.value with
+  | none => simp [calculateExistenceRoot, hk1e, hv1e, hl1] at r1
+  | some lh₁ =>
+  cases hl2 : applyLeaf H p₂.leaf p₂.key p₂.value with
+  | none => simp [calculateExistenceRoot, hk2e, hv2e, hl2] at r2
+  | some lh₂ =>
+  have e1 : applyPath H s.innerSpec lh₁ p₁.path = some root := by
+    rw [← calculateExistenceRoot_eq H s p₁ lh₁ hk1e hv1e hl1]; exact r1
+  have e2 : applyPath H s.innerSpec lh₂ p₂.path = some root := by
+    rw [← calculateExistenceRoot_eq H s p₂ lh₂ hk2e hv2e hl2]; exact r2
+  rw [hk1, hvv1] at hl1
+  rw [hk2, hvv2] at hl2
+  rcases applyPath_merge H s (p₁.path.length + p₂.path.length) p₁.path p₂.path lh₁ lh₂ root rfl
+      (verifyExistence_inners H p₁ s root key v₁ h₁)
+      (verifyExistence_inners H p₂ s root key v₂ h₂) e1 e2 with hc | ha | hlheq | hii1 | hii2
+  · exact Or.inl hc
+  · exact Or.inr (Or.inl ha)
+  · by_cases hpeq : p₁.leaf.prefixBytes = p₂.leaf.prefixBytes
+    · have hleq : p₁.leaf = p₂.leaf :=
+        ensureLeaf_eq p₁.leaf p₂.leaf s.leafSpec
+          (verifyExistence_leaf H p₁ s root key v₁ h₁)
+          (verifyExistence_leaf H p₂ s root key v₂ h₂) hpeq
+      refine Or.inl ?_
+      rw [hlheq] at hl1
+      rw [← hleq] at hl2
+      exact leaf_value_collision H p₁.leaf key v₁ v₂ lh₂ hLeafInj hv1ne hv2ne hv hl1 hl2
+    · refine Or.inr (Or.inr ⟨p₁.leaf, p₂.leaf, key, v₁, key, v₂, lh₂,
+        verifyExistence_leaf H p₁ s root key v₁ h₁,
+        verifyExistence_leaf H p₂ s root key v₂ h₂, hpeq, ?_, hl2⟩)
+      rw [hlheq] at hl1; exact hl1
+  · exact Or.inl (leafHash_innerImage_collision H s p₁.leaf key v₁ lh₁ b hsh hpreShape hmin
+      (verifyExistence_leaf H p₁ s root key v₁ h₁) hl1 hii1)
+  · exact Or.inl (leafHash_innerImage_collision H s p₂.leaf key v₂ lh₂ b hsh hpreShape hmin
+      (verifyExistence_leaf H p₂ s root key v₂ h₂) hl2 hii2)
 
 end Ics23

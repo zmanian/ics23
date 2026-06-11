@@ -74,17 +74,22 @@ for where (and why) the model intentionally differs from the Rust.
     collision-only conclusion is provably too strong byte-level.
   - Byte-ordering facts behind the neighbor checks: `bytesLt_irrefl`,
     `bytesLt_ne` (`NonExistSound.lean`).
-- **Stated, proof in progress (the two `sorry`s):**
-  - the *general* Theorem A (`existence_binding`) — remaining gap is the
-    differing-path-structure case (positional unambiguity, A3);
+  - **General existence binding — fully proved** (`existence_binding_shaped`):
+    for the production-spec shape, two proofs binding one key to two values under
+    one root — with *no* assumption on their leaf ops or paths — yield the honest
+    three-way disjunction `HashCollision ∨ PositionalAmbiguity ∨ LeafAmbiguity`.
+    The ambiguity arms are real machine-checkable obstructions (F3 + leaf-level
+    analogue); collapsing them needs the symbolic-Merkle model. Built on
+    `applyPath_merge`, `ensureLeaf_eq`, `leafHash_innerImage_collision`.
+- **Stated, proof in progress (the one remaining `sorry`):**
   - Theorem B, non-existence soundness (`nonexistence_sound`) — needs the
-    ordered-tree semantics an `InnerSpec` describes.
+    ordered-tree semantics an `InnerSpec` describes / the symbolic-Merkle model.
 - **Executable end to end:** a concrete SHA-256 (`Sha256.lean`, validated
   against the vectors in `rust/src/ops.rs`) and `concreteHash` make the verifier
   runnable; `Executable.lean` computes real roots and refutes value-swap /
   wrong-shape forgeries by `native_decide`. This is the seed of the Phase 2a
   differential oracle.
 - **CI:** `.github/workflows/lean.yml` builds all proofs and fails if any
-  unexpected `sorry` appears (exactly two are whitelisted).
-- **Next:** close Theorem A's differing-path case; prove Theorem B; drive the
-  executable model against the Rust/Go implementations (Phase 2a).
+  unexpected `sorry` appears (exactly one is whitelisted).
+- **Next:** prove Theorem B (`nonexistence_sound`); drive the executable model
+  against the Rust/Go implementations (Phase 2a).

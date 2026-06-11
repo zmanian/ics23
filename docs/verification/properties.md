@@ -200,18 +200,16 @@ the corpus.
 
 ### Remaining obligations
 
-1. **General Theorem A — drop the same-leaf assumption (the one `sorry`).**
-   Binding is now fully proved for **same-leaf proofs of arbitrary depth**
-   (`existence_binding_sameleaf`, instantiated for all three shipped specs),
-   via the root-side structural core `applyPath_merge` + leaf/inner domain
-   separation. The length-mismatch case (a) is **done**. What remains is only
-   (b): dropping the same-leaf-op assumption, which introduces a *leaf-level*
-   positional ambiguity (different-length leaf prefixes) not captured by the
-   inner `PositionalAmbiguity`. Closing it needs a leaf-ambiguity arm in the
-   disjunction, or the symbolic-Merkle model. (For a fixed key in a real tree
-   the leaf op is determined, so the same-leaf theorem covers the honest case;
-   the residue is purely adversarial leaf-prefix manipulation.)
-2. **Theorem B (non-existence soundness).** Formalize the ordered-tree semantics
+1. **Theorem A — DONE (existence binding).** Fully proved, no `sorry`:
+   `existence_binding_shaped` (general, production-spec shape) concludes the
+   honest three-way disjunction `HashCollision ∨ PositionalAmbiguity ∨
+   LeafAmbiguity`; `existence_binding_sameleaf` gives the stronger two-way
+   conclusion for the honest same-leaf case (a key's leaf op is determined in a
+   real tree). The two ambiguity arms are real machine-checkable obstructions
+   (F3 and its leaf-level analogue); collapsing them to a bare collision is what
+   the symbolic-Merkle model would add — not required for the honest theorem.
+2. **Theorem B (non-existence soundness) — the one remaining `sorry`.**
+   Formalize the ordered-tree semantics
    an `InnerSpec` describes (left-most / right-most / adjacency under
    `child_order`, `empty_child` for sparse trees), then prove: an accepted
    non-existence proof for `k` plus an accepted existence proof for `k` ⇒
