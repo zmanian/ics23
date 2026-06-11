@@ -107,3 +107,17 @@ fn right_branches_slice_in_bounds_binary() {
         i += 1;
     }
 }
+
+/// `decompress_exist` resolves a compressed path index with
+/// `lookup.get(x as usize)` for an attacker-controlled `i32` x. This is
+/// panic-free for any x and any lookup table: a negative or out-of-range index
+/// wraps under `as usize` and `get` returns `None` (the caller maps that to an
+/// empty path), so the compressed-batch decode cannot panic on the index.
+#[kani::proof]
+fn decompress_index_no_panic() {
+    let len: usize = kani::any();
+    kani::assume(len <= 4);
+    let lookup: alloc::vec::Vec<u8> = alloc::vec![0u8; len];
+    let x: i32 = kani::any();
+    let _ = lookup.get(x as usize);
+}

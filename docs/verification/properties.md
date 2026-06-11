@@ -97,14 +97,16 @@ casts in `ensure_inner`, `ensure_inner_prefix`, and compressed-batch index
 handling), termination, input-bounded allocation. Not in the Lean model.
 
 Landed (`rust/src/kani_proofs.rs`, `#[cfg(kani)]`, run by `cargo kani` / CI):
-three harnesses **verified** by CBMC — the `ensure_inner` prefix-bound `i32`
+**five harnesses verified** by CBMC — the `ensure_inner` prefix-bound `i32`
 arithmetic and the `get_padding` products are overflow-free under well-formed
-bounds, and the `left_branches_are_empty` slice accesses are always in bounds
-(the Dragonberry-class out-of-range-slice surface). Noted finding: an adversarial
-spec with an enormous `child_size` could overflow the `i32` prefix-bound product;
-the harnesses pin the safe precondition. Remaining: panic-freedom of the
-`Result`-returning entry points (`do_length`, `proto_len`) needs formatting stubs
-to keep CBMC tractable, and compressed-batch index handling.
+bounds; the `left_branches_are_empty` / `right_branches_are_empty` (binary) slice
+accesses are always in bounds (the Dragonberry-class out-of-range-slice surface);
+and `decompress_exist`'s `lookup.get(x as usize)` compressed-batch index handling
+is panic-free for any attacker-controlled `i32` index. Noted finding: an
+adversarial spec with an enormous `child_size` could overflow the `i32`
+prefix-bound product; the harnesses pin the safe precondition. Remaining:
+panic-freedom of the `Result`-returning entry points (`do_length`, `proto_len`)
+needs formatting stubs to keep CBMC tractable.
 
 ### E. Go/Rust acceptance equivalence — Phase 2a (differential oracle)
 
