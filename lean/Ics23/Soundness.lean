@@ -199,10 +199,18 @@ Proof strategy (being landed incrementally):
      `!has_prefix`): at the first divergence the images coincide but the
      preimages differ, yielding the collision.
 
-The same-shape, `NoPrefix`-length fragment of this is already fully proved as
-`Ics23.existence_binding_noPrefix_sameshape` (see `Existence.lean`). The general
-statement below additionally needs the varint self-delimiting argument (A1 for
-length-prefixed specs) and the differing-path case (A3). -/
+The same-shape case is fully proved for all three shipped specs as
+`Ics23.existence_binding_sameshape{,_noPrefix,_varProto}` (see `Existence.lean`).
+
+The general statement below is OPEN, and not for lack of a tactic: the
+differing-path case runs into finding **F3** (see `docs/verification/properties.md`
+and the machine-checked witnesses in `Executable.lean`). A node preimage is
+accepted by `ensure_inner` under two distinct positional readings (left-child vs
+right-child), so disagreeing proofs need not yield a *collision* against an
+arbitrary `H` — exploiting the ambiguity is a *preimage* problem. Closing this
+requires a model refinement (an injective/opaque "Merkle" hash model, or
+re-including the per-store prefix structure such as IAVL's `ensure_inner_prefix`),
+not a proof-tactic change. -/
 theorem existence_binding
     (H : HashFn) (hNoHash : ∀ b, H .noHash b = b)
     (s : ProofSpec) (hwf : WellFormed s)
