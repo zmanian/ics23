@@ -124,11 +124,6 @@ def WFTree (s : ProofSpec) (b : UInt8) : MTree → Prop
       pre ≠ [] ∧ pre.head? ≠ some b ∧
       WFTree s b l ∧ WFTree s b r
 
-/-- A fixed-length hash family (`cs`-byte digests), with `cs = child_size`. The
-honest setting: SHA-256 outputs 32 bytes and the binary specs set
-`child_size = 32`. -/
-def FixedHash (H : HashFn) (cs : Nat) : Prop := ∀ (op : HashOp) (d : Bytes), (H op d).length = cs
-
 /-- `applyLeaf` / `applyInner` outputs are `cs`-length digests. -/
 theorem applyLeaf_len (H : HashFn) (cs : Nat) (hH : FixedHash H cs)
     (leaf : LeafOp) (k v r : Bytes) (h : applyLeaf H leaf k v = some r) : r.length = cs := by

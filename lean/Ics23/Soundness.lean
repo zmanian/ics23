@@ -26,6 +26,11 @@ exhibiting one of these, so the results are unconditional (no hash assumptions).
 def HashCollision (H : HashFn) : Prop :=
   ∃ (op : HashOp) (a b : Bytes), a ≠ b ∧ H op a = H op b
 
+/-- A fixed-length hash family (`cs`-byte digests), with `cs = child_size`. The
+honest setting: SHA-256 outputs 32 bytes and the binary specs set
+`child_size = 32`. -/
+def FixedHash (H : HashFn) (cs : Nat) : Prop := ∀ (op : HashOp) (d : Bytes), (H op d).length = cs
+
 /-! ## Well-formedness of a `ProofSpec`
 
 These are the side conditions Theorems A and B assume. They are phrased as a
