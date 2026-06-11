@@ -70,6 +70,46 @@ theorem rightChildOp_apply (H : HashFn) (ih : HashOp) (pre mid suf lh rh : Bytes
   unfold applyInner rightChildOp
   rw [if_neg (by rw [hrh]; simp)]
 
+/-- **F3 resolution (the crux).** For a binary node `pre ++ lh ++ rh` with
+`|lh| = |rh| = cs`, the verifier's checks — prefix length in `[p, p+cs]` and
+`suffix.length % cs = 0` — pin any accepted split of the node into a `cs`-length
+child to *exactly* the two genuine children: the child is the left or right
+subtree hash. There is no straddling third reading. -/
+theorem split_pins (pre lh rh topPre m topSuf : Bytes) (cs p : Nat)
+    (hN : topPre ++ m ++ topSuf = pre ++ lh ++ rh)
+    (hpre : pre.length = p) (hlh : lh.length = cs) (hrh : rh.length = cs)
+    (hm : m.length = cs) (hcs : 0 < cs)
+    (hpb1 : p ≤ topPre.length) (hpb2 : topPre.length ≤ p + cs)
+    (hsuf : topSuf.length % cs = 0) :
+    m = lh ∨ m = rh := by
+  have hlentot : topPre.length + m.length + topSuf.length
+      = pre.length + lh.length + rh.length := by
+    have h := congrArg List.length hN
+    simp only [List.length_append] at h
+    omega
+  rw [hm, hpre, hlh, hrh] at hlentot
+  have hsuflen : topSuf.length = 0 ∨ topSuf.length = cs := by
+    rcases Nat.eq_zero_or_pos topSuf.length with h0 | hpos
+    · exact Or.inl h0
+    · refine Or.inr ?_
+      have hdvd : cs ∣ topSuf.length := Nat.dvd_of_mod_eq_zero hsuf
+      have hge : cs ≤ topSuf.length := Nat.le_of_dvd hpos hdvd
+      omega
+  rcases hsuflen with hs0 | hscs
+  · -- empty suffix: the child is the right subtree
+    refine Or.inr ?_
+    have hsnil : topSuf = [] := List.length_eq_zero_iff.mp hs0
+    rw [hsnil, List.append_nil] at hN
+    have hlen' : topPre.length = (pre ++ lh).length := by
+      simp only [List.length_append]; omega
+    exact (List.append_inj hN hlen').2
+  · -- full-cs suffix: the child is the left subtree
+    refine Or.inl ?_
+    simp only [List.append_assoc] at hN
+    have htplen : topPre.length = pre.length := by omega
+    have hA := List.append_inj hN htplen
+    exact (List.append_inj hA.2 (by rw [hm, hlh])).1
+
 /-- **Membership soundness (Theorem A, honest-root form).** If `root` is the hash
 of a real tree `t` and an existence proof for `(key, value)` verifies against
 `root`, then `(key, value)` is genuinely in `t` — or the proof exhibits a hash
