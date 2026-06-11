@@ -425,4 +425,22 @@ theorem reaches_min (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
         · exact Or.inr hcol
       · exact Or.inr (hashCollision_of H s.innerSpec.hash _ _ hpe (htopimg.trans hrh.symm))
 
+/-- Structure extracted from `ensure_left_neighbor`: after stripping the common
+root-side path, the first divergent ops form a left-step, the left remainder is
+right-most, and the right remainder is left-most. -/
+theorem ensureLeftNeighbor_spec (isp : InnerSpec) (left right : List InnerOp)
+    (h : ensureLeftNeighbor isp left right = true) :
+    ∃ topLeft restL topRight restR,
+      dropCommonPrefix left.reverse right.reverse
+        = (some topLeft, restL, some topRight, restR) ∧
+      isLeftStep isp topLeft topRight = true ∧
+      ensureRightMost isp restL.reverse = true ∧
+      ensureLeftMost isp restR.reverse = true := by
+  unfold ensureLeftNeighbor at h
+  split at h
+  · next topLeft restL topRight restR heq =>
+    simp only [Bool.and_eq_true] at h
+    exact ⟨topLeft, restL, topRight, restR, heq, h.1.1, h.1.2, h.2⟩
+  · exact absurd h (by simp)
+
 end Ics23
