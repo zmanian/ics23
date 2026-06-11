@@ -104,4 +104,21 @@ theorem minKey_le_member (t : MTree) (key value : Bytes)
       · rw [h]; exact hlk
       · exact bytesLt_trans _ _ _ h hlk
 
+/-- **BST gap (root case).** In a sorted node, no member sits strictly between
+the left subtree's max key and the right subtree's min key. This is the core
+ordered-tree fact behind non-existence: adjacent leaves have no member between. -/
+theorem root_gap_no_member (ih : HashOp) (pre mid suf : Bytes) (l r : MTree)
+    (hs : SortedTree (.node ih pre mid suf l r))
+    (key' value' : Bytes) (hm : TreeMember key' value' (.node ih pre mid suf l r))
+    (h1 : bytesLt (maxKey l) key' = true) (h2 : bytesLt key' (minKey r) = true) : False := by
+  obtain ⟨hsl, hsr, _⟩ := hs
+  simp only [TreeMember] at hm
+  rcases hm with hml | hmr
+  · rcases member_le_maxKey l key' value' hsl hml with h | h
+    · rw [h] at h1; simp [bytesLt_irrefl] at h1
+    · have := bytesLt_trans _ _ _ h1 h; simp [bytesLt_irrefl] at this
+  · rcases minKey_le_member r key' value' hsr hmr with h | h
+    · rw [← h] at h2; simp [bytesLt_irrefl] at h2
+    · have := bytesLt_trans _ _ _ h2 h; simp [bytesLt_irrefl] at this
+
 end Ics23
