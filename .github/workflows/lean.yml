@@ -37,13 +37,15 @@ jobs:
       - name: Fail on unexpected sorry
         working-directory: ./lean
         run: |
-          # One sorry is expected: `nonexistence_sound` (Theorem B), which needs
-          # the symbolic-Merkle model. Existence binding is fully proved. Fail if
-          # any others appear.
+          # Three sorries are expected, all in the Option-1 honest-root effort:
+          #   - nonexistence_sound (Theorem B);
+          #   - reaches (node case: split_pins assembly) and membership_sound,
+          #     the honest-root Theorem A whose crux split_pins is already proved.
+          # Byte-level existence binding is fully proved. Fail if others appear.
           count=$(grep -rn --include='*.lean' '^\s*sorry\b\|:= sorry\| sorry$' Ics23 | wc -l | tr -d ' ')
           echo "sorry count: $count"
-          if [ "$count" -ne 1 ]; then
-            echo "Unexpected number of sorry occurrences (expected 1)."
+          if [ "$count" -ne 3 ]; then
+            echo "Unexpected number of sorry occurrences (expected 3)."
             grep -rn --include='*.lean' '^\s*sorry\b\|:= sorry\| sorry$' Ics23 || true
             exit 1
           fi

@@ -21,6 +21,7 @@ so a left-child op `{ih, pre, mid++rh++suf}` and a right-child op
 -/
 import Ics23.Verify
 import Ics23.Soundness
+import Ics23.Existence
 
 namespace Ics23
 
@@ -144,11 +145,118 @@ theorem applyInner_len (H : HashFn) (cs : Nat) (hH : FixedHash H cs)
   have := applyInner_image H op c r h
   rw [← this]; exact hH _ _
 
-/-- **Membership soundness (Theorem A, honest-root form).** If `root` is the hash
-of a real (Tendermint-shaped) tree `t` and an existence proof for `(key, value)`
-verifies against `root`, then `(key, value)` is genuinely in `t` — or the proof
-exhibits a hash collision. No ambiguity arm: against a real root, `split_pins`
-forces the F3 readings to be genuine left/right children. -/
+/-- A tree's root hash is a `cs`-length digest. -/
+theorem rootHash_len (H : HashFn) (cs : Nat) (hH : FixedHash H cs) :
+    ∀ (t : MTree) (r : Bytes), rootHash H t = some r → r.length = cs := by
+  intro t
+  induction t with
+  | leaf op k v =>
+    intro r hrh; unfold rootHash at hrh; exact applyLeaf_len H cs hH op k v r hrh
+  | node ih pre mid suf l r _ _ =>
+    intro root hrh
+    unfold rootHash at hrh
+    cases hl : rootHash H l with
+    | none => rw [hl] at hrh; simp at hrh
+    | some lh =>
+      cases hr : rootHash H r with
+      | none => rw [hl, hr] at hrh; simp at hrh
+      | some rh =>
+        rw [hl, hr] at hrh; simp only [Option.some.injEq] at hrh
+        rw [← hrh]; exact hH _ _
+
+/-- A path fold preserves the `cs`-length digest. -/
+theorem applyPath_len (H : HashFn) (isp : InnerSpec) (cs : Nat) (hH : FixedHash H cs) :
+    ∀ (p : List InnerOp) (h r : Bytes), h.length = cs →
+      applyPath H isp h p = some r → r.length = cs := by
+  intro p
+  induction p with
+  | nil =>
+    intro h r hh hap; simp only [applyPath, Option.some.injEq] at hap; rw [← hap]; exact hh
+  | cons op rest ih =>
+    intro h r hh hap
+    simp only [applyPath] at hap
+    cases ha : applyInner H op h with
+    | none => simp [ha] at hap
+    | some h' =>
+      simp only [ha] at hap
+      by_cases g : (h'.length : Int) > isp.childSize ∧ isp.childSize ≥ 32
+      · simp [g] at hap
+      · rw [if_neg g] at hap
+        exact ih h' r (applyInner_len H cs hH op h h' ha) hap
+
+/-- Any leaf op conforms to itself. -/
+theorem ensureLeaf_self (l : LeafOp) : ensureLeaf l l = true := by
+  unfold ensureLeaf; simp [hasPrefix_refl]
+
+/-- The leaf preimage starts with the leaf prefix byte `b`. -/
+theorem applyLeaf_head (H : HashFn) (leaf : LeafOp) (k v r : Bytes) (b : UInt8)
+    (hpre : leaf.prefixBytes = [b]) (h : applyLeaf H leaf k v = some r) :
+    ∃ tail, r = H leaf.hash (b :: tail) := by
+  unfold applyLeaf at h
+  cases hpk : prepareLeafData H leaf.prehashKey leaf.length k with
+  | none => simp [hpk] at h
+  | some pk =>
+  cases hpv : prepareLeafData H leaf.prehashValue leaf.length v with
+  | none => simp [hpk, hpv] at h
+  | some pv =>
+  rw [hpk, hpv] at h; simp only [Option.some.injEq] at h
+  exact ⟨pk ++ pv, by rw [← h, hpre]; rfl⟩
+
+/-- Core induction: a proof whose leaf hash folds to a real tree's root reaches a
+genuine leaf — using `split_pins` to force each step into a real child. -/
+theorem reaches (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
+    (hH : FixedHash H cs) (hcs : 0 < cs)
+    (hcsspec : s.innerSpec.childSize.toNat = cs)
+    (hihash : s.innerSpec.hash = s.leafSpec.hash)
+    (hlpre : s.leafSpec.prefixBytes = [b])
+    (hmin : 1 ≤ s.innerSpec.minPrefixLength)
+    (hLInj : ∀ k₁ v₁ k₂ v₂, applyLeaf H s.leafSpec k₁ v₁ = applyLeaf H s.leafSpec k₂ v₂ →
+      (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
+    ∀ (t : MTree) (key value lh : Bytes) (path : List InnerOp) (root : Bytes),
+      WFTree s b t →
+      applyLeaf H s.leafSpec key value = some lh →
+      (∀ op ∈ path, ensureInner op s = true) →
+      rootHash H t = some root →
+      applyPath H s.innerSpec lh path = some root →
+      TreeMember key value t ∨ HashCollision H := by
+  intro t
+  induction t with
+  | leaf top tk tv =>
+    intro key value lh path root hwf hlh hpath hrh hap
+    -- WFTree leaf ⇒ top = s.leafSpec
+    simp only [WFTree] at hwf; subst hwf
+    rw [rootHash] at hrh
+    cases path with
+    | nil =>
+      simp only [applyPath, Option.some.injEq] at hap
+      -- lh = root, and lh = applyLeaf .. (key,value), root = applyLeaf .. (tk,tv)
+      subst hap
+      rcases hLInj key value tk tv (by rw [hlh, hrh]) with ⟨hk, hv⟩ | hc
+      · exact Or.inl ⟨hk.symm, hv.symm⟩
+      · exact Or.inr hc
+    | cons op rest =>
+      -- nonempty path ⇒ root is an inner image; but root is a leaf hash ⇒ collision
+      have hii : IsInnerImage H s root :=
+        applyPath_result_isInnerImage H s (op :: rest) lh root (by simp) hpath hap
+      exact Or.inr (leafHash_innerImage_collision H s s.leafSpec tk tv root b
+        hihash.symm hlpre hmin (ensureLeaf_self s.leafSpec) hrh hii)
+  | node ih pre mid suf l r ihl ihr =>
+    intro key value lh path root hwf hlh hpath hrh hap
+    obtain ⟨hih, hmid, hsuf, hprene, hprehead, hwfl, hwfr⟩ := hwf
+    subst hmid; subst hsuf; subst hih
+    -- compute rootHash node
+    rw [rootHash] at hrh
+    cases hl : rootHash H l with
+    | none => rw [hl] at hrh; simp at hrh
+    | some lhL =>
+    cases hr : rootHash H r with
+    | none => rw [hl, hr] at hrh; simp at hrh
+    | some rhR =>
+    rw [hl, hr] at hrh
+    simp only [List.append_nil, Option.some.injEq] at hrh
+    -- root = H ih (pre ++ lhL ++ rhR)
+    sorry
+
 theorem membership_sound (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
     (hH : FixedHash H cs) (hcs : 0 < cs)
     (hcsspec : s.innerSpec.childSize.toNat = cs)
