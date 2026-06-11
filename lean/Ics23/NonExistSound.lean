@@ -104,10 +104,18 @@ spec and root without a hash collision.
 
 Proof obligation (see `docs/verification/properties.md`): formalize the ordered
 tree an `InnerSpec` describes — `ensure_left_most`, `ensure_right_most`, and
-`ensure_left_neighbor` pin the absent key strictly between two adjacent leaves —
-then show an existence proof placing `key` between those neighbors contradicts
-the strict ordering, forcing a collision. Respects
-`prehash_key_before_comparison` (the order is over hashed keys for SMT/JMT). -/
+`ensure_left_neighbor` pin the absent key strictly between two *position*-adjacent
+leaves (the `Order.lean` lemmas are the start of this) — then show an existence
+proof placing `key` between those neighbors contradicts adjacency, forcing a
+collision. Respects `prehash_key_before_comparison` (order over hashed keys for
+SMT/JMT).
+
+IMPORTANT (finding F4): this statement as written is **incomplete** — it is not
+provable without a *key-sortedness* hypothesis on `root`. The verifier links key
+order and position adjacency but never checks that positions track key order, so
+nothing rules out `key`'s leaf sitting at an unrelated position. The full theorem
+must carry `KeySorted root` (the store invariant ICS23 requires: leaves sorted by
+key), which is the next thing to define. -/
 theorem nonexistence_sound
     (H : HashFn) (hNoHash : ∀ b, H .noHash b = b)
     (s : ProofSpec) (hwf : WellFormed s)

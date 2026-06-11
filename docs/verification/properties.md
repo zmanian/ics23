@@ -133,6 +133,23 @@ Concrete malicious proofs, each targeting one invariant. To be encoded as Lean
 
 ## Findings (surfaced by the verification work)
 
+- **F4 — non-existence soundness requires the store key-sortedness invariant
+  (it is a hypothesis, not enforced by the verifier).** `verify_non_existence`
+  checks `key_for_comparison(l.key) < key_for_comparison(key) <
+  key_for_comparison(r.key)` and that `l`, `r` are *position*-adjacent leaves
+  (`ensure_left_neighbor` etc.). But it never checks that leaf positions track
+  key order. So nothing in the verifier alone rules out an existence proof
+  placing `key`'s leaf at an unrelated position while its key value sits between
+  the neighbors — i.e. `nonexistence_sound` is **false without** assuming the
+  tree's leaves are sorted by key (left-to-right). ICS23 states this requirement
+  informally ("Supported merkle stores must be lexicographically ordered to
+  maintain soundness"); the formalization makes it precise: Theorem B must carry
+  a `KeySorted root` hypothesis (any two existence proofs to `root` have key
+  order iff position order). The `Order.lean` position lemmas are the start of
+  stating that invariant; with it, the proof is: `key` between `l`,`r` in key
+  order ⇒ (sortedness) between them in position order ⇒ contradicts adjacency.
+
+
 - **F1 — i32 prefix-bound overflow (malformed spec).** `ensure_inner` computes
   `max_prefix_length + (child_order.len()-1)*child_size` in `i32`; an adversarial
   spec with an enormous `child_size` overflows it. Not reachable with the shipped
