@@ -209,6 +209,19 @@ the corpus.
    (F3 and its leaf-level analogue); collapsing them to a bare collision is what
    the symbolic-Merkle model would add — not required for the honest theorem.
 2. **Theorem B (non-existence soundness) — the one remaining `sorry`.**
+   *Why it can't reuse the existence machinery (a real distinction):* applying
+   `applyPath_merge` to the existence proof (for `key`) and a neighbor proof (for
+   `l.key`/`r.key`) is **vacuous** — two proofs for *different* keys legitimately
+   diverge at their common ancestor, which the model reads as a
+   `PositionalAmbiguity`. (`PositionalAmbiguity` is only a *meaningful* obstruction
+   for existence binding, where the two proofs share a key and an honest prover
+   produces identical paths — so divergence there really is the F3 attack.) The
+   non-existence contradiction lives entirely in the *ordering*: `bytesLt` on keys
+   plus `ensure_left_neighbor` / `ensure_{left,right}_most` must imply the
+   bracketing leaves are adjacent, so an existence proof placing `key` strictly
+   between them is impossible. That requires a from-scratch ordered-tree position
+   model (the size of the `applyPath_merge` development), and its adversarial
+   cases need the symbolic-Merkle model. Concretely:
    Formalize the ordered-tree semantics
    an `InnerSpec` describes (left-most / right-most / adjacency under
    `child_order`, `empty_child` for sparse trees), then prove: an accepted
