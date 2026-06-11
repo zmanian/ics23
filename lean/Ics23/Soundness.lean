@@ -223,6 +223,86 @@ theorem applyPath_result_isInnerImage (H : HashFn) (s : ProofSpec) :
         | cons op2 rest2 =>
           exact ih h' r (by simp) (fun o ho => hall o (List.mem_cons_of_mem op ho)) happ
 
+/-- The image equation extracted from a successful `applyInner`. -/
+theorem applyInner_image (H : HashFn) (op : InnerOp) (c r : Bytes)
+    (happ : applyInner H op c = some r) :
+    H op.hash (op.prefixBytes ++ c ++ op.suffix) = r := by
+  unfold applyInner at happ
+  by_cases e : c.isEmpty = true
+  · rw [if_pos e] at happ; exact absurd happ (by simp)
+  · rw [if_neg e] at happ; exact Option.some.inj happ
+
+/-- A spec-conformant inner op uses the inner spec's hash. -/
+theorem ensureInner_hash (op : InnerOp) (s : ProofSpec)
+    (h : ensureInner op s = true) : op.hash = s.innerSpec.hash := by
+  unfold ensureInner at h
+  simp only [Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨⟨hh, _⟩, _⟩, _⟩, _⟩, _⟩, _⟩ := h
+  exact eq_of_beq hh
+
+/-- **Binding for equal-length paths.** Two spec-conformant paths of the *same
+length* folding two inputs to the same root force the inputs equal — or exhibit a
+collision or the F3 positional ambiguity. This strengthens the same-shape result
+(which required identical ops) to arbitrary differing ops at equal depth; the
+equal length is what sidesteps the leaf/inner length-mismatch case. -/
+theorem applyPath_eqlen_merge (H : HashFn) (s : ProofSpec) :
+    ∀ (p₁ p₂ : List InnerOp), p₁.length = p₂.length →
+      ∀ (h₁ h₂ r : Bytes),
+      (∀ op ∈ p₁, ensureInner op s = true) → (∀ op ∈ p₂, ensureInner op s = true) →
+      applyPath H s.innerSpec h₁ p₁ = some r → applyPath H s.innerSpec h₂ p₂ = some r →
+      HashCollision H ∨ PositionalAmbiguity s ∨ h₁ = h₂ := by
+  intro p₁
+  induction p₁ with
+  | nil =>
+    intro p₂ hlen h₁ h₂ r _ _ e1 e2
+    cases p₂ with
+    | nil =>
+      simp only [applyPath, Option.some.injEq] at e1 e2
+      exact Or.inr (Or.inr (e1.trans e2.symm))
+    | cons => simp at hlen
+  | cons op1 rest1 ih =>
+    intro p₂ hlen h₁ h₂ r hall1 hall2 e1 e2
+    cases p₂ with
+    | nil => simp at hlen
+    | cons op2 rest2 =>
+      have hlen' : rest1.length = rest2.length := by simpa using hlen
+      simp only [applyPath] at e1 e2
+      cases hA1 : applyInner H op1 h₁ with
+      | none => simp [hA1] at e1
+      | some h₁' =>
+        cases hA2 : applyInner H op2 h₂ with
+        | none => simp [hA2] at e2
+        | some h₂' =>
+          simp only [hA1] at e1
+          simp only [hA2] at e2
+          by_cases g1 : (h₁'.length : Int) > s.innerSpec.childSize ∧ s.innerSpec.childSize ≥ 32
+          · simp [g1] at e1
+          · by_cases g2 : (h₂'.length : Int) > s.innerSpec.childSize ∧ s.innerSpec.childSize ≥ 32
+            · simp [g2] at e2
+            · rw [if_neg g1] at e1
+              rw [if_neg g2] at e2
+              have hin1 : ensureInner op1 s = true := hall1 op1 (List.mem_cons_self ..)
+              have hin2 : ensureInner op2 s = true := hall2 op2 (List.mem_cons_self ..)
+              rcases ih rest2 hlen' h₁' h₂' r
+                  (fun o ho => hall1 o (List.mem_cons_of_mem op1 ho))
+                  (fun o ho => hall2 o (List.mem_cons_of_mem op2 ho)) e1 e2 with hc | ha | heq
+              · exact Or.inl hc
+              · exact Or.inr (Or.inl ha)
+              · subst heq
+                have hP1 := applyInner_image H op1 h₁ h₁' hA1
+                have hP2 := applyInner_image H op2 h₂ h₁' hA2
+                have hhash : op1.hash = op2.hash :=
+                  (ensureInner_hash op1 s hin1).trans (ensureInner_hash op2 s hin2).symm
+                rw [hhash] at hP1
+                -- hP1 : H op2.hash P1 = h₁',  hP2 : H op2.hash P2 = h₁'
+                by_cases hPeq :
+                    op1.prefixBytes ++ h₁ ++ op1.suffix = op2.prefixBytes ++ h₂ ++ op2.suffix
+                · by_cases hop : op1 = op2
+                  · subst hop
+                    exact Or.inr (Or.inr ((innerImage_inj op1 h₁ h₂).mp hPeq))
+                  · exact Or.inr (Or.inl ⟨op1, op2, h₁, h₂, hin1, hin2, hop, hPeq⟩)
+                · exact Or.inl (hashCollision_of H op2.hash _ _ hPeq (hP1.trans hP2.symm))
+
 /-! ## Theorem A: existence binding (soundness)
 
 A single root cannot bind one key to two different values without a hash

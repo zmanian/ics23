@@ -58,6 +58,14 @@ for where (and why) the model intentionally differs from the Rust.
     JMT) and `existence_binding_sameshape_varProto` (IAVL / Tendermint). Two
     proofs sharing tree shape that bind one key to two values force a hash
     collision — the value-swap forgery, end to end.
+  - **Equal-length binding** `existence_binding_eqlen` — strengthens the above
+    to proofs of equal *depth* with arbitrary (differing) inner ops, concluding
+    the honest disjunction `HashCollision ∨ PositionalAmbiguity` (the F3
+    obstacle). Built on `applyPath_eqlen_merge`.
+  - **Finding F3 is formalized and machine-checked** (`PositionalAmbiguity`,
+    witnesses in `Executable.lean`/`IavlPrefix.lean`): the general
+    `existence_binding` is correctly stated as a disjunction, since a
+    collision-only conclusion is provably too strong byte-level.
   - Byte-ordering facts behind the neighbor checks: `bytesLt_irrefl`,
     `bytesLt_ne` (`NonExistSound.lean`).
 - **Stated, proof in progress (the two `sorry`s):**

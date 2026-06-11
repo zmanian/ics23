@@ -39,6 +39,10 @@ inductive HashOp where
   | blake3
   deriving Repr, DecidableEq, BEq, Inhabited
 
+instance : LawfulBEq HashOp where
+  eq_of_beq {a b} h := by cases a <;> cases b <;> first | rfl | exact absurd h (by decide)
+  rfl {a} := by cases a <;> rfl
+
 /-- Length-prefix operations supported by the verifier (`do_length`). -/
 inductive LengthOp where
   | noPrefix
