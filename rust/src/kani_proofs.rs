@@ -12,6 +12,29 @@
 //! the `Result`-returning entry points (`do_length`, `proto_len`) is left to a
 //! later pass that stubs formatting.
 
+/// `do_length` is panic-free for `NoPrefix` and the fixed-width ops: the
+/// `data.len() as u32 / u64` casts and `to_be/le_bytes` extends cannot panic.
+/// (`VarProto` and `Require*` route through `anyhow` construction, which blows up
+/// CBMC's formula; they are excluded here.)
+#[kani::proof]
+fn do_length_fixed_no_panic() {
+    use crate::ics23::LengthOp;
+    use crate::ops::do_length;
+    let choice: u8 = kani::any();
+    kani::assume(choice < 5);
+    let op = match choice {
+        0 => LengthOp::NoPrefix,
+        1 => LengthOp::Fixed32Big,
+        2 => LengthOp::Fixed32Little,
+        3 => LengthOp::Fixed64Big,
+        _ => LengthOp::Fixed64Little,
+    };
+    let len: usize = kani::any();
+    kani::assume(len <= 4);
+    let data = alloc::vec![0u8; len];
+    let _ = do_length(op, &data);
+}
+
 /// `ensure_inner`'s prefix bound `max_prefix_length + (child_order.len()-1) *
 /// child_size` is overflow-free in `i32` for well-formed bounds (cf. the
 /// IAVL/Tendermint/SMT specs). A malformed spec with an enormous `child_size`
