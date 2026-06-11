@@ -188,21 +188,26 @@ Concrete malicious proofs, each targeting one invariant. To be encoded as Lean
 Model is complete (existence + non-existence). Proved with no `sorry`:
 Theorem C (all three spec certificates); A1 leaf-encoding injectivity for both
 `NoPrefix` (fixed-prehash) and `VarProto` (varint self-delimiting) shapes;
-the path-fold backbone (`applyInner_inj`, `applyPath_sameops_inj`); and
-**same-shape existence binding for all three shipped specs**
-(`existence_binding_sameshape{,_noPrefix,_varProto}`). Non-existence padding /
-empty-branch logic is exercised by the corpus.
+the path-fold backbone (`applyInner_inj`, `applyPath_sameops_inj`,
+`applyPath_eqlen_merge`); **same-shape existence binding for all three shipped
+specs** (`existence_binding_sameshape{,_noPrefix,_varProto}`); and
+**equal-length existence binding** (`existence_binding_eqlen`) — same key, same
+leaf op, equal path *depth* but arbitrary differing inner ops ⇒ `HashCollision ∨
+PositionalAmbiguity`. Non-existence padding / empty-branch logic is exercised by
+the corpus.
 
 ### Remaining obligations
 
-1. **General Theorem A — differing-path case (the one `sorry`).** Drop the
-   `hpathEq`/`hleafEq` assumptions from `existence_binding_sameshape`. The crux:
-   at a node where two proofs' inner ops differ but produce equal images
-   (`op₁.prefix ++ c₁ ++ op₁.suffix = op₂.prefix ++ c₂ ++ op₂.suffix`),
-   `WellFormed` + `ensureInner` (prefix window, `suffix % child_size = 0`,
-   `max < min + child_size`) must force `op₁ = op₂` and `c₁ = c₂` (positional
-   unambiguity, A3) — else a collision. This is the hardest piece; prove the
-   positional lemma first in isolation, binary specs first.
+1. **General Theorem A — arbitrary-length case (the one `sorry`).** With the
+   conclusion corrected to `HashCollision ∨ PositionalAmbiguity` (F3), what
+   remains beyond `existence_binding_eqlen` is: (a) the length-mismatch case,
+   where one proof's leaf hash equals the other's intermediate node hash —
+   discharged by leaf/inner domain separation (`applyPath_result_isInnerImage`
+   is its proven component, plus a leaf-vs-inner collision lemma); and (b)
+   dropping the same-leaf-op assumption, which introduces a *leaf-level*
+   positional ambiguity (different-length leaf prefixes) not captured by the
+   inner `PositionalAmbiguity` — the disjunction would need a leaf-ambiguity
+   arm, or the symbolic-Merkle model. Equal-depth, same-leaf proofs are done.
 2. **Theorem B (non-existence soundness).** Formalize the ordered-tree semantics
    an `InnerSpec` describes (left-most / right-most / adjacency under
    `child_order`, `empty_child` for sparse trees), then prove: an accepted
