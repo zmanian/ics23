@@ -37,9 +37,13 @@ jobs:
       - name: Fail on unexpected sorry
         working-directory: ./lean
         run: |
-          # One sorry is expected: nonexistence_sound (Theorem B). Byte-level
-          # existence binding AND honest-root membership soundness (Theorem A,
-          # Tree.lean) are fully proved. Fail if any others appear.
+          # One sorry is expected: the abstract-root nonexistence_sound, left
+          # unproved by design (findings F3/F4 — an opaque root carries no tree
+          # structure). The genuine results are fully proved with no sorry:
+          # honest-root membership soundness (Theorem A, nonexistence_sound_tree's
+          # cousin membership_sound) AND honest-root non-existence soundness
+          # (Theorem B, nonexistence_sound_tree / _tendermint in TreeNonExist),
+          # plus byte-level existence binding. Fail if any others appear.
           count=$(grep -rn --include='*.lean' '^\s*sorry\b\|:= sorry\| sorry$' Ics23 | wc -l | tr -d ' ')
           echo "sorry count: $count"
           if [ "$count" -ne 1 ]; then

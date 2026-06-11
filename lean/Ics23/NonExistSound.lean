@@ -99,24 +99,29 @@ theorem verifyNonExistence_neighbors_ordered
     (verifyNonExistence_left H s root key nep l hl h).2
     (verifyNonExistence_right H s root key nep r hr h).2
 
-/-- **Theorem B (non-existence soundness), statement.** A non-existence proof
-for `key` and an existence proof for `key` cannot both verify under the same
-spec and root without a hash collision.
+/-- **Theorem B (non-existence soundness), abstract-root statement.** A
+non-existence proof for `key` and an existence proof for `key` cannot both verify
+under the same spec and root without a hash collision.
 
-Proof obligation (see `docs/verification/properties.md`): formalize the ordered
-tree an `InnerSpec` describes — `ensure_left_most`, `ensure_right_most`, and
-`ensure_left_neighbor` pin the absent key strictly between two *position*-adjacent
-leaves (the `Order.lean` lemmas are the start of this) — then show an existence
-proof placing `key` between those neighbors contradicts adjacency, forcing a
-collision. Respects `prehash_key_before_comparison` (order over hashed keys for
-SMT/JMT).
+This abstract-root form is **deliberately left as the one `sorry`**: as written it
+is not provable, for exactly the reasons findings F3/F4 record — an opaque `root`
+carries no tree structure, so nothing connects byte-order (which the neighbor
+checks constrain) to *position* in the tree, and nothing forbids `key`'s leaf
+sitting at an unrelated position. This is the non-existence analog of why
+Theorem A's real result is the honest-root `membership_sound` rather than an
+abstract-root binding.
 
-IMPORTANT (finding F4): this statement as written is **incomplete** — it is not
-provable without a *key-sortedness* hypothesis on `root`. The verifier links key
-order and position adjacency but never checks that positions track key order, so
-nothing rules out `key`'s leaf sitting at an unrelated position. The full theorem
-must carry `KeySorted root` (the store invariant ICS23 requires: leaves sorted by
-key), which is the next thing to define. -/
+The genuine result is proved in the honest-root tree model:
+`Ics23.nonexistence_sound_tree` (and `nonexistence_sound_tree_tendermint`) in
+`Tree`/`TreeNonExist`. There, `root = rootHash t` for a key-sorted honest tree
+`t`, and the full chain is discharged with no axioms beyond `FixedHash` + joint
+leaf injectivity: `membership_sound` makes the absent key a genuine member,
+`ensureLeftNeighbor_spec` + `neighbor_divergence` pin the bracketing proofs to a
+divergence node `N`, and `node_gap_no_member` shows no member can sit between
+`maxKey N.left` and `minKey N.right`. The padding-vs-navigation subtlety (F4/F5)
+is resolved by the `ensureRightMost_suffix_nil` / `ensureLeftMost_suffix_cs`
+bridges. Respects `prehash_key_before_comparison` via the `keyForComparison`
+hypothesis (identity for Tendermint; the SMT/JMT prehash composes analogously). -/
 theorem nonexistence_sound
     (H : HashFn) (hNoHash : ∀ b, H .noHash b = b)
     (s : ProofSpec) (hwf : WellFormed s)

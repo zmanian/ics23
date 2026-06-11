@@ -800,4 +800,114 @@ theorem neighbor_divergence (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
         · exact Or.inr (hashCollision_of H s.innerSpec.hash _ _ hpeR (htopimgR.trans hrh.symm))
       · exact Or.inr (hashCollision_of H s.innerSpec.hash _ _ hpeL (htopimgL.trans hrh.symm))
 
+/-- A verifying existence proof navigates: its leaf hash folds along its path to
+the claimed root, and every path op is spec-conformant. (Extracted from the body
+of `membership_sound`.) -/
+theorem verifyExistence_navigates (H : HashFn) (s : ProofSpec) (p : ExistenceProof) (root : Bytes)
+    (hep : p.leaf = s.leafSpec)
+    (hver : verifyExistence H p s root p.key p.value = true) :
+    ∃ lh, applyLeaf H s.leafSpec p.key p.value = some lh ∧
+          applyPath H s.innerSpec lh p.path = some root ∧
+          (∀ op ∈ p.path, ensureInner op s = true) := by
+  have hr := verifyExistence_root H p s root p.key p.value hver
+  cases hke : p.key.isEmpty with
+  | true => simp [calculateExistenceRoot, hke] at hr
+  | false =>
+  cases hve : p.value.isEmpty with
+  | true => simp [calculateExistenceRoot, hke, hve] at hr
+  | false =>
+  cases hlf : applyLeaf H p.leaf p.key p.value with
+  | none => simp [calculateExistenceRoot, hke, hve, hlf] at hr
+  | some lh =>
+    have hap : applyPath H s.innerSpec lh p.path = some root := by
+      rw [calculateExistenceRoot_eq H s p lh hke hve hlf] at hr; exact hr
+    refine ⟨lh, ?_, hap, verifyExistence_inners H p s root p.key p.value hver⟩
+    rw [← hep]; exact hlf
+
+/-- **Theorem B (non-existence soundness), honest-root tree model — two-sided.**
+The honest-root analog of `membership_sound`: for a key-sorted honest tree, a
+two-sided non-existence proof for `key` and an existence proof for `key` cannot
+both verify without a hash collision. The neighbor walk pins the bracketing
+proofs to a divergence node `N`; the absent key, were it a genuine member, would
+sit in the forbidden gap between `maxKey N.left` and `minKey N.right`, which
+`node_gap_no_member` rules out in a sorted tree. -/
+theorem nonexistence_sound_tree (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
+    (hH : FixedHash H cs) (hcs : 0 < cs)
+    (hcsspec : s.innerSpec.childSize.toNat = cs)
+    (hlhash : s.leafSpec.hash = s.innerSpec.hash)
+    (hlpre : s.leafSpec.prefixBytes = [b])
+    (hmin : 1 ≤ s.innerSpec.minPrefixLength)
+    (hmm : s.innerSpec.minPrefixLength = s.innerSpec.maxPrefixLength)
+    (hco : s.innerSpec.childOrder = [0, 1])
+    (hec : s.innerSpec.emptyChild.length ≠ cs)
+    (hkfc : ∀ k, keyForComparison H s k = k)
+    (hLInj : ∀ k₁ v₁ k₂ v₂ r, applyLeaf H s.leafSpec k₁ v₁ = some r →
+      applyLeaf H s.leafSpec k₂ v₂ = some r → (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H)
+    (t : MTree) (hwf : WFTree s b t) (hsort : SortedTree t)
+    (root key value : Bytes) (hroot : rootHash H t = some root)
+    (nep : NonExistenceProof) (ep lp rp : ExistenceProof)
+    (hnl : nep.left = some lp) (hnr : nep.right = some rp)
+    (hepleaf : ep.leaf = s.leafSpec) (hlpleaf : lp.leaf = s.leafSpec) (hrpleaf : rp.leaf = s.leafSpec)
+    (hkey : ep.key = key)
+    (hne : verifyNonExistence H nep s root key = true)
+    (hex : verifyExistence H ep s root key value = true) :
+    HashCollision H := by
+  have hbin : s.innerSpec.childOrder.length = 2 := by rw [hco]; rfl
+  -- the absent key is a genuine member of the honest tree (or a collision)
+  rcases membership_sound H s b cs hH hcs hcsspec hlhash hlpre hmin hmm hbin hLInj
+    t ep root key value hwf hepleaf hroot hex with hmem | hc
+  · -- bracketing proofs verify and bracket the key
+    obtain ⟨hlver, hllt⟩ := verifyNonExistence_left H s root key nep lp hnl hne
+    obtain ⟨hrver, hrlt⟩ := verifyNonExistence_right H s root key nep rp hnr hne
+    have hnb : ensureLeftNeighbor s.innerSpec lp.path rp.path = true := by
+      unfold verifyNonExistence at hne
+      simp only [hnl, hnr, Bool.and_eq_true] at hne
+      exact hne.2
+    -- both bracketing proofs navigate
+    obtain ⟨lhLeaf, hlapL, hlap, hlinn⟩ := verifyExistence_navigates H s lp root hlpleaf hlver
+    obtain ⟨rhLeaf, hrapL, hrap, hrinn⟩ := verifyExistence_navigates H s rp root hrpleaf hrver
+    -- the neighbor walk decomposes
+    obtain ⟨topLeft, restL, topRight, restR, hdcp, hls, hrm, hlm⟩ :=
+      ensureLeftNeighbor_spec s.innerSpec lp.path rp.path hnb
+    -- ... and pins both proofs to a divergence node N
+    rcases neighbor_divergence H s b cs hH hcs hcsspec hlhash.symm hlpre hmin hmm hco hec hLInj
+      t lhLeaf rhLeaf root lp.key lp.value rp.key rp.value lp.path rp.path topLeft topRight restL restR
+      hwf hlapL hrapL hlinn hrinn hroot hlap hrap hdcp hls hrm hlm with hdiv | hc
+    · obtain ⟨ihN, preN, lN, rN, hsub, hLeq, hReq⟩ := hdiv
+      rcases hLeq with hLeq | hc
+      · rcases hReq with hReq | hc
+        · -- maxKey N.left < key < minKey N.right, but key is a member: contradiction
+          rw [hkfc, hkfc] at hllt hrlt
+          exact (node_gap_no_member t hsort ihN preN [] [] lN rN hsub key value hmem
+            (by rw [← hLeq]; exact hllt) (by rw [← hReq]; exact hrlt)).elim
+        · exact hc
+      · exact hc
+    · exact hc
+  · exact hc
+
+/-- **Theorem B for the Tendermint spec (two-sided).** Structural side conditions
+discharged by computation; the remaining hypotheses are the genuine cryptographic
+assumptions (`FixedHash` + joint leaf injectivity). Mirrors
+`membership_sound_tendermint`. -/
+theorem nonexistence_sound_tree_tendermint (H : HashFn)
+    (hH : FixedHash H 32)
+    (hLInj : ∀ k₁ v₁ k₂ v₂ r,
+      applyLeaf H tendermintSpec.leafSpec k₁ v₁ = some r →
+      applyLeaf H tendermintSpec.leafSpec k₂ v₂ = some r →
+      (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H)
+    (t : MTree) (hwf : WFTree tendermintSpec 0 t) (hsort : SortedTree t)
+    (root key value : Bytes) (hroot : rootHash H t = some root)
+    (nep : NonExistenceProof) (ep lp rp : ExistenceProof)
+    (hnl : nep.left = some lp) (hnr : nep.right = some rp)
+    (hepleaf : ep.leaf = tendermintSpec.leafSpec)
+    (hlpleaf : lp.leaf = tendermintSpec.leafSpec) (hrpleaf : rp.leaf = tendermintSpec.leafSpec)
+    (hkey : ep.key = key)
+    (hne : verifyNonExistence H nep tendermintSpec root key = true)
+    (hex : verifyExistence H ep tendermintSpec root key value = true) :
+    HashCollision H :=
+  nonexistence_sound_tree H tendermintSpec 0 32 hH (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide) (by decide) (by decide)
+    (fun k => by simp [keyForComparison, tendermintSpec]) hLInj
+    t hwf hsort root key value hroot nep ep lp rp hnl hnr hepleaf hlpleaf hrpleaf hkey hne hex
+
 end Ics23
