@@ -181,6 +181,48 @@ theorem applyPath_sameops_inj (H : HashFn) (isp : InnerSpec) :
               exact applyInner_inj H step h₁ h₂ h₁' hA1 hA2
             · exact Or.inr hc
 
+/-- The positional ambiguity of finding F3, formalized: two distinct inner ops
+that both pass `ensureInner` for `s` and decompose the *same* node preimage with
+*different* children. This is the obstacle to a pure collision reduction for
+general binding (see `docs/verification/properties.md`, `IavlPrefix.lean`). -/
+def PositionalAmbiguity (s : ProofSpec) : Prop :=
+  ∃ (op₁ op₂ : InnerOp) (c₁ c₂ : Bytes),
+    ensureInner op₁ s = true ∧ ensureInner op₂ s = true ∧ op₁ ≠ op₂ ∧
+    op₁.prefixBytes ++ c₁ ++ op₁.suffix = op₂.prefixBytes ++ c₂ ++ op₂.suffix
+
+/-- `h` is the image of some spec-conformant inner op — i.e. a non-leaf node
+hash. Used to discharge the length-mismatch case of binding via leaf/inner
+domain separation. -/
+def IsInnerImage (H : HashFn) (s : ProofSpec) (h : Bytes) : Prop :=
+  ∃ (op : InnerOp) (c : Bytes), ensureInner op s = true ∧ applyInner H op c = some h
+
+/-- The result of folding a non-empty, spec-conformant path is an inner-node
+image. (Component of the differing-length case of binding.) -/
+theorem applyPath_result_isInnerImage (H : HashFn) (s : ProofSpec) :
+    ∀ (p : List InnerOp) (h r : Bytes), p ≠ [] →
+      (∀ op ∈ p, ensureInner op s = true) →
+      applyPath H s.innerSpec h p = some r → IsInnerImage H s r := by
+  intro p
+  induction p with
+  | nil => intro h r hne _ _; exact absurd rfl hne
+  | cons op rest ih =>
+    intro h r _ hall happ
+    simp only [applyPath] at happ
+    cases hA : applyInner H op h with
+    | none => simp [hA] at happ
+    | some h' =>
+      simp only [hA] at happ
+      by_cases g : (h'.length : Int) > s.innerSpec.childSize ∧ s.innerSpec.childSize ≥ 32
+      · simp [g] at happ
+      · rw [if_neg g] at happ
+        cases rest with
+        | nil =>
+          simp only [applyPath, Option.some.injEq] at happ
+          refine ⟨op, h, hall op (List.mem_cons_self ..), ?_⟩
+          rw [hA]; exact congrArg some happ
+        | cons op2 rest2 =>
+          exact ih h' r (by simp) (fun o ho => hall o (List.mem_cons_of_mem op ho)) happ
+
 /-! ## Theorem A: existence binding (soundness)
 
 A single root cannot bind one key to two different values without a hash
@@ -202,15 +244,20 @@ Proof strategy (being landed incrementally):
 The same-shape case is fully proved for all three shipped specs as
 `Ics23.existence_binding_sameshape{,_noPrefix,_varProto}` (see `Existence.lean`).
 
-The general statement below is OPEN, and not for lack of a tactic: the
-differing-path case runs into finding **F3** (see `docs/verification/properties.md`
-and the machine-checked witnesses in `Executable.lean`). A node preimage is
-accepted by `ensure_inner` under two distinct positional readings (left-child vs
-right-child), so disagreeing proofs need not yield a *collision* against an
-arbitrary `H` — exploiting the ambiguity is a *preimage* problem. Closing this
-requires a model refinement (an injective/opaque "Merkle" hash model, or
-re-including the per-store prefix structure such as IAVL's `ensure_inner_prefix`),
-not a proof-tactic change. -/
+The conclusion here is the **honest, true** statement: a collision *or* the
+positional ambiguity (F3). A collision-only conclusion would be too strong —
+`IavlPrefix.lean` machine-checks that even IAVL's prefix structure admits two
+positional readings of one node, so against an arbitrary `H` the differing-path
+case need not yield a collision (it is a *preimage* problem). The same-shape case
+(`Existence.lean`) avoids the ambiguity and yields a collision outright.
+
+What remains (the `sorry`): the path induction assembling the conclusion —
+walk both proofs down from the shared root; equal node images with differing
+preimages give a collision; equal images with the same op recurse; equal images
+with a different op are a `PositionalAmbiguity`; a length mismatch hits leaf/inner
+domain separation (a collision); and the base case is leaf injectivity (proved).
+Discharging this disjunction, or strengthening it to a collision under a symbolic
+"Merkle" hash model, is the documented next step. -/
 theorem existence_binding
     (H : HashFn) (hNoHash : ∀ b, H .noHash b = b)
     (s : ProofSpec) (hwf : WellFormed s)
@@ -219,7 +266,7 @@ theorem existence_binding
     (hv : v₁ ≠ v₂)
     (h₁ : verifyExistence H p₁ s root key v₁ = true)
     (h₂ : verifyExistence H p₂ s root key v₂ = true) :
-    HashCollision H := by
+    HashCollision H ∨ PositionalAmbiguity s := by
   sorry
 
 end Ics23
