@@ -79,8 +79,8 @@ subtree hash. There is no straddling third reading. -/
 theorem split_pins (pre lh rh topPre m topSuf : Bytes) (cs p : Nat)
     (hN : topPre ++ m ++ topSuf = pre ++ lh ++ rh)
     (hpre : pre.length = p) (hlh : lh.length = cs) (hrh : rh.length = cs)
-    (hm : m.length = cs) (hcs : 0 < cs)
-    (hpb1 : p ≤ topPre.length) (hpb2 : topPre.length ≤ p + cs)
+    (hm : m.length = cs) (_hcs : 0 < cs)
+    (hpb1 : p ≤ topPre.length) (_hpb2 : topPre.length ≤ p + cs)
     (hsuf : topSuf.length % cs = 0) :
     m = lh ∨ m = rh := by
   have hlentot : topPre.length + m.length + topSuf.length
@@ -119,6 +119,7 @@ def WFTree (s : ProofSpec) (b : UInt8) : MTree → Prop
   | .leaf op _ _ => op = s.leafSpec
   | .node ih pre mid suf l r =>
       ih = s.innerSpec.hash ∧ mid = [] ∧ suf = [] ∧
+      (pre.length : Int) = s.innerSpec.minPrefixLength ∧
       pre ≠ [] ∧ pre.head? ≠ some b ∧
       WFTree s b l ∧ WFTree s b r
 
@@ -202,6 +203,34 @@ theorem applyLeaf_head (H : HashFn) (leaf : LeafOp) (k v r : Bytes) (b : UInt8)
   rw [hpk, hpv] at h; simp only [Option.some.injEq] at h
   exact ⟨pk ++ pv, by rw [← h, hpre]; rfl⟩
 
+/-- From `ensure_inner`, for a binary spec with `min = max` prefix length, the
+prefix length lies in `[p, p+cs]` and the suffix length is a multiple of `cs`
+(`p = min` = the node prefix length). These are exactly `split_pins`' hypotheses. -/
+theorem split_bounds (op : InnerOp) (s : ProofSpec) (cs p : Nat)
+    (hcsspec : s.innerSpec.childSize.toNat = cs)
+    (hmm : s.innerSpec.minPrefixLength = s.innerSpec.maxPrefixLength)
+    (hbin : s.innerSpec.childOrder.length = 2)
+    (hpp : (p : Int) = s.innerSpec.minPrefixLength)
+    (hen : ensureInner op s = true) :
+    p ≤ op.prefixBytes.length ∧ op.prefixBytes.length ≤ p + cs
+      ∧ op.suffix.length % cs = 0 := by
+  unfold ensureInner at hen
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at hen
+  obtain ⟨⟨⟨⟨⟨⟨_, _⟩, hc3⟩, hc4⟩, hc5⟩, _⟩, hc7⟩ := hen
+  have hcsInt : s.innerSpec.childSize = (cs : Int) := by omega
+  rw [hbin] at hc4
+  refine ⟨?_, ?_, ?_⟩
+  · omega
+  · -- |prefix| ≤ max + (2-1)*cs = min + cs = p + cs
+    have : ((op.prefixBytes.length : Int)) ≤ s.innerSpec.minPrefixLength + (cs : Int) := by
+      rw [hmm]; rw [hcsInt] at hc4; push_cast at hc4 ⊢; omega
+    omega
+  · -- (|suffix| : Int) % childSize = 0 → |suffix| % cs = 0
+    rw [hcsInt] at hc7
+    have : ((op.suffix.length % cs : Nat) : Int) = 0 := by
+      rw [Int.natCast_emod]; exact hc7
+    exact_mod_cast this
+
 /-- Core induction: a proof whose leaf hash folds to a real tree's root reaches a
 genuine leaf — using `split_pins` to force each step into a real child. -/
 theorem reaches (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
@@ -210,6 +239,8 @@ theorem reaches (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
     (hihash : s.innerSpec.hash = s.leafSpec.hash)
     (hlpre : s.leafSpec.prefixBytes = [b])
     (hmin : 1 ≤ s.innerSpec.minPrefixLength)
+    (hmm : s.innerSpec.minPrefixLength = s.innerSpec.maxPrefixLength)
+    (hbin : s.innerSpec.childOrder.length = 2)
     (hLInj : ∀ k₁ v₁ k₂ v₂, applyLeaf H s.leafSpec k₁ v₁ = applyLeaf H s.leafSpec k₂ v₂ →
       (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
     ∀ (t : MTree) (key value lh : Bytes) (path : List InnerOp) (root : Bytes),
@@ -242,9 +273,8 @@ theorem reaches (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
         hihash.symm hlpre hmin (ensureLeaf_self s.leafSpec) hrh hii)
   | node ih pre mid suf l r ihl ihr =>
     intro key value lh path root hwf hlh hpath hrh hap
-    obtain ⟨hih, hmid, hsuf, hprene, hprehead, hwfl, hwfr⟩ := hwf
+    obtain ⟨hih, hmid, hsuf, hppre, hprene, hprehead, hwfl, hwfr⟩ := hwf
     subst hmid; subst hsuf; subst hih
-    -- compute rootHash node
     rw [rootHash] at hrh
     cases hl : rootHash H l with
     | none => rw [hl] at hrh; simp at hrh
@@ -254,19 +284,86 @@ theorem reaches (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
     | some rhR =>
     rw [hl, hr] at hrh
     simp only [List.append_nil, Option.some.injEq] at hrh
-    -- root = H ih (pre ++ lhL ++ rhR)
-    sorry
+    -- hrh : H s.innerSpec.hash (pre ++ lhL ++ rhR) = root
+    rcases List.eq_nil_or_concat path with hpnil | ⟨q, topOp, hpc⟩
+    · -- empty path: the proof's leaf hash equals the node hash ⇒ domain collision
+      subst hpnil
+      simp only [applyPath, Option.some.injEq] at hap
+      obtain ⟨tail, hlheq⟩ := applyLeaf_head H s.leafSpec key value lh b hlpre hlh
+      rw [← hihash] at hlheq
+      refine Or.inr (leaf_inner_domain_collision H s.innerSpec.hash (b :: tail)
+        (pre ++ lhL ++ rhR) b (by simp) ?_ ?_)
+      · cases hpc2 : pre with
+        | nil => exact absurd hpc2 hprene
+        | cons x xs =>
+          rw [hpc2] at hprehead
+          simp only [List.cons_append, List.head?_cons] at hprehead ⊢
+          exact hprehead
+      · rw [← hlheq, hap]; exact hrh.symm
+    · -- nonempty path: peel the root op and force it into a genuine child
+      rw [List.concat_eq_append] at hpc; subst hpc
+      obtain ⟨m, hpm, htop, _⟩ := (applyPath_snoc H s.innerSpec q topOp lh root).mp hap
+      have htopimg := applyInner_image H topOp m root htop
+      rw [ensureInner_hash topOp s (hpath topOp (by simp))] at htopimg
+      by_cases hpe : topOp.prefixBytes ++ m ++ topOp.suffix = pre ++ lhL ++ rhR
+      · have hmlen : m.length = cs :=
+          applyPath_len H s.innerSpec cs hH q lh m
+            (applyLeaf_len H cs hH s.leafSpec key value lh hlh) hpm
+        obtain ⟨hb1, hb2, hb7⟩ := split_bounds topOp s cs pre.length hcsspec hmm hbin hppre
+          (hpath topOp (by simp))
+        rcases split_pins pre lhL rhR topOp.prefixBytes m topOp.suffix cs pre.length
+          hpe rfl (rootHash_len H cs hH l lhL hl) (rootHash_len H cs hH r rhR hr)
+          hmlen hcs hb1 hb2 hb7 with hml | hmr
+        · rw [hml] at hpm
+          rcases ihl key value lh q lhL hwfl hlh
+            (fun o ho => hpath o (List.mem_append.mpr (Or.inl ho))) hl hpm with hmem | hcol
+          · exact Or.inl (Or.inl hmem)
+          · exact Or.inr hcol
+        · rw [hmr] at hpm
+          rcases ihr key value lh q rhR hwfr hlh
+            (fun o ho => hpath o (List.mem_append.mpr (Or.inl ho))) hr hpm with hmem | hcol
+          · exact Or.inl (Or.inr hmem)
+          · exact Or.inr hcol
+      · exact Or.inr (hashCollision_of H s.innerSpec.hash _ _ hpe (htopimg.trans hrh.symm))
 
 theorem membership_sound (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
     (hH : FixedHash H cs) (hcs : 0 < cs)
     (hcsspec : s.innerSpec.childSize.toNat = cs)
     (hlhash : s.leafSpec.hash = s.innerSpec.hash)
-    (hlpre : s.leafSpec.prefixBytes = [b]) :
+    (hlpre : s.leafSpec.prefixBytes = [b])
+    (hmin : 1 ≤ s.innerSpec.minPrefixLength)
+    (hmm : s.innerSpec.minPrefixLength = s.innerSpec.maxPrefixLength)
+    (hbin : s.innerSpec.childOrder.length = 2)
+    (hLInj : ∀ k₁ v₁ k₂ v₂, applyLeaf H s.leafSpec k₁ v₁ = applyLeaf H s.leafSpec k₂ v₂ →
+      (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
     ∀ (t : MTree) (ep : ExistenceProof) (root key value : Bytes),
       WFTree s b t →
+      ep.leaf = s.leafSpec →
       rootHash H t = some root →
       verifyExistence H ep s root key value = true →
       TreeMember key value t ∨ HashCollision H := by
-  sorry
+  intro t ep root key value hwf hep hrh hver
+  have hr := verifyExistence_root H ep s root key value hver
+  have hkey : ep.key = key ∧ ep.value = value := by
+    unfold verifyExistence at hver
+    simp only [Bool.and_eq_true] at hver
+    obtain ⟨⟨⟨_, hkk⟩, hvv⟩, _⟩ := hver
+    exact ⟨by simpa using hkk, by simpa using hvv⟩
+  obtain ⟨hk, hv⟩ := hkey
+  cases hke : ep.key.isEmpty with
+  | true => simp [calculateExistenceRoot, hke] at hr
+  | false =>
+  cases hve : ep.value.isEmpty with
+  | true => simp [calculateExistenceRoot, hke, hve] at hr
+  | false =>
+  cases hlf : applyLeaf H ep.leaf ep.key ep.value with
+  | none => simp [calculateExistenceRoot, hke, hve, hlf] at hr
+  | some lh =>
+    have hap : applyPath H s.innerSpec lh ep.path = some root := by
+      rw [calculateExistenceRoot_eq H s ep lh hke hve hlf] at hr; exact hr
+    rw [hep, hk, hv] at hlf
+    exact reaches H s b cs hH hcs hcsspec hlhash.symm hlpre hmin hmm hbin hLInj
+      t key value lh ep.path root hwf hlf
+      (verifyExistence_inners H ep s root key value hver) hrh hap
 
 end Ics23
