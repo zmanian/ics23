@@ -62,6 +62,12 @@ for where (and why) the model intentionally differs from the Rust.
     to proofs of equal *depth* with arbitrary (differing) inner ops, concluding
     the honest disjunction `HashCollision ∨ PositionalAmbiguity` (the F3
     obstacle). Built on `applyPath_eqlen_merge`.
+  - **Same-leaf binding, any depth** `existence_binding_sameleaf` — the strongest
+    result: same leaf op, *arbitrary differing-length* paths ⇒ `HashCollision ∨
+    PositionalAmbiguity`. Built on the root-side structural core `applyPath_merge`
+    (+ `applyPath_snoc`) and leaf/inner domain separation
+    (`leafHash_innerImage_collision`). Instantiated for all three shipped specs:
+    `existence_binding_{iavl,tendermint,smt}` (side conditions closed by `decide`).
   - **Finding F3 is formalized and machine-checked** (`PositionalAmbiguity`,
     witnesses in `Executable.lean`/`IavlPrefix.lean`): the general
     `existence_binding` is correctly stated as a disjunction, since a
