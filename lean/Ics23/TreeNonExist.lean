@@ -104,6 +104,74 @@ theorem minKey_le_member (t : MTree) (key value : Bytes)
       · rw [h]; exact hlk
       · exact bytesLt_trans _ _ _ h hlk
 
+/-- `≤` (`= ∨ bytesLt`) is transitive. -/
+theorem ble_trans (a b c : Bytes) (h1 : a = b ∨ bytesLt a b = true)
+    (h2 : b = c ∨ bytesLt b c = true) : a = c ∨ bytesLt a c = true := by
+  rcases h1 with h1 | h1
+  · rcases h2 with h2 | h2
+    · exact Or.inl (h1.trans h2)
+    · exact Or.inr (h1 ▸ h2)
+  · rcases h2 with h2 | h2
+    · exact Or.inr (h2 ▸ h1)
+    · exact Or.inr (bytesLt_trans _ _ _ h1 h2)
+
+/-- `a ≤ b` and `b < a` are contradictory. -/
+theorem ble_not_gt (a b : Bytes) (h1 : a = b ∨ bytesLt a b = true)
+    (h2 : bytesLt b a = true) : False := by
+  rcases h1 with h | h
+  · rw [h, bytesLt_irrefl] at h2; exact Bool.noConfusion h2
+  · have := bytesLt_trans _ _ _ h h2; rw [bytesLt_irrefl] at this; exact Bool.noConfusion this
+
+/-- `N` is a subtree of `t`. -/
+def IsSubtree : MTree → MTree → Prop
+  | N, .leaf ih k v => N = .leaf ih k v
+  | N, .node ih pre mid suf l r =>
+      N = .node ih pre mid suf l r ∨ IsSubtree N l ∨ IsSubtree N r
+
+/-- A subtree's min key is `≥` the whole tree's min key. -/
+theorem subtree_minKey_le (t : MTree) (hs : SortedTree t) (N : MTree) (hsub : IsSubtree N t) :
+    minKey t = minKey N ∨ bytesLt (minKey t) (minKey N) = true := by
+  induction t with
+  | leaf ih k v => simp only [IsSubtree] at hsub; rw [hsub]; exact Or.inl rfl
+  | node ih pre mid suf l r ihl ihr =>
+    obtain ⟨hsl, hsr, hlr⟩ := hs
+    simp only [IsSubtree] at hsub
+    rcases hsub with hN | hsubl | hsubr
+    · rw [hN]; exact Or.inl rfl
+    · exact ihl hsl hsubl  -- minKey node = minKey l
+    · -- minKey node = minKey l ≤ maxKey l < minKey r ≤ minKey N
+      refine Or.inr ?_
+      show bytesLt (minKey l) (minKey N) = true
+      have h1 : bytesLt (minKey l) (minKey r) = true := by
+        rcases minKey_le_maxKey l hsl with h | h
+        · rw [h]; exact hlr
+        · exact bytesLt_trans _ _ _ h hlr
+      rcases ihr hsr hsubr with h | h
+      · rw [← h]; exact h1
+      · exact bytesLt_trans _ _ _ h1 h
+
+/-- A subtree's max key is `≤` the whole tree's max key. -/
+theorem subtree_maxKey_ge (t : MTree) (hs : SortedTree t) (N : MTree) (hsub : IsSubtree N t) :
+    maxKey N = maxKey t ∨ bytesLt (maxKey N) (maxKey t) = true := by
+  induction t with
+  | leaf ih k v => simp only [IsSubtree] at hsub; rw [hsub]; exact Or.inl rfl
+  | node ih pre mid suf l r ihl ihr =>
+    obtain ⟨hsl, hsr, hlr⟩ := hs
+    simp only [IsSubtree] at hsub
+    rcases hsub with hN | hsubl | hsubr
+    · rw [hN]; exact Or.inl rfl
+    · -- maxKey N ≤ maxKey l < minKey r ≤ maxKey r = maxKey node
+      refine Or.inr ?_
+      show bytesLt (maxKey N) (maxKey r) = true
+      have h1 : bytesLt (maxKey N) (minKey r) = true := by
+        rcases ihl hsl hsubl with h | h
+        · rw [h]; exact hlr
+        · exact bytesLt_trans _ _ _ h hlr
+      rcases minKey_le_maxKey r hsr with h | h
+      · rw [← h]; exact h1
+      · exact bytesLt_trans _ _ _ h1 h
+    · exact ihr hsr hsubr  -- maxKey node = maxKey r
+
 /-- **BST gap (root case).** In a sorted node, no member sits strictly between
 the left subtree's max key and the right subtree's min key. This is the core
 ordered-tree fact behind non-existence: adjacent leaves have no member between. -/
@@ -120,6 +188,76 @@ theorem root_gap_no_member (ih : HashOp) (pre mid suf : Bytes) (l r : MTree)
   · rcases minKey_le_member r key' value' hsr hmr with h | h
     · rw [← h] at h2; simp [bytesLt_irrefl] at h2
     · have := bytesLt_trans _ _ _ h2 h; simp [bytesLt_irrefl] at this
+
+/-- **Subtree contiguity.** A member of a sorted tree whose key lies within a
+subtree `N`'s key range is a member of `N`. (Sorted trees occupy contiguous key
+ranges.) -/
+theorem member_in_subtree_range (t : MTree) (hs : SortedTree t)
+    (N : MTree) (hsub : IsSubtree N t) (key value : Bytes) (hm : TreeMember key value t)
+    (hlo : minKey N = key ∨ bytesLt (minKey N) key = true)
+    (hhi : key = maxKey N ∨ bytesLt key (maxKey N) = true) :
+    TreeMember key value N := by
+  induction t with
+  | leaf ih k v => simp only [IsSubtree] at hsub; subst hsub; exact hm
+  | node ih pre mid suf l r ihl ihr =>
+    obtain ⟨hsl, hsr, hlr⟩ := hs
+    simp only [IsSubtree] at hsub
+    simp only [TreeMember] at hm
+    rcases hsub with hN | hsubl | hsubr
+    · subst hN; simp only [TreeMember]; exact hm
+    · -- N ⊆ l : key ≤ maxKey N ≤ maxKey l < minKey r, so the member is in l
+      have hkml : key = maxKey l ∨ bytesLt key (maxKey l) = true :=
+        ble_trans _ _ _ hhi (subtree_maxKey_ge l hsl N hsubl)
+      have hklt : bytesLt key (minKey r) = true := by
+        rcases hkml with h | h
+        · rw [h]; exact hlr
+        · exact bytesLt_trans _ _ _ h hlr
+      rcases hm with hml | hmr
+      · exact ihl hsl hsubl hml
+      · exact absurd (minKey_le_member r key value hsr hmr) (fun h => ble_not_gt _ _ h hklt)
+    · -- N ⊆ r : minKey l < minKey r ≤ minKey N ≤ key, so the member is in r
+      have hkmr : minKey r = key ∨ bytesLt (minKey r) key = true :=
+        ble_trans _ _ _ (subtree_minKey_le r hsr N hsubr) hlo
+      have hrlt : bytesLt (maxKey l) key = true := by
+        rcases hkmr with h | h
+        · rw [← h]; exact hlr
+        · exact bytesLt_trans _ _ _ hlr h
+      rcases hm with hml | hmr
+      · exact absurd (member_le_maxKey l key value hsl hml) (fun h => ble_not_gt _ _ h hrlt)
+      · exact ihr hsr hsubr hmr
+
+/-- A subtree of a sorted tree is sorted. -/
+theorem subtree_sorted (t : MTree) (hs : SortedTree t) (N : MTree) (hsub : IsSubtree N t) :
+    SortedTree N := by
+  induction t with
+  | leaf _ _ _ => simp only [IsSubtree] at hsub; rw [hsub]; exact hs
+  | node _ _ _ _ l r ihl ihr =>
+    obtain ⟨hsl, hsr, hlr⟩ := hs
+    simp only [IsSubtree] at hsub
+    rcases hsub with hN | hl | hr
+    · rw [hN]; exact ⟨hsl, hsr, hlr⟩
+    · exact ihl hsl hl
+    · exact ihr hsr hr
+
+/-- **BST gap (general subtree).** For any subtree `N` of a sorted tree `t`, no
+member of `t` sits strictly between `N`'s left-max and right-min keys. -/
+theorem node_gap_no_member (t : MTree) (hs : SortedTree t)
+    (ih : HashOp) (pre mid suf : Bytes) (l r : MTree)
+    (hsub : IsSubtree (.node ih pre mid suf l r) t)
+    (key value : Bytes) (hm : TreeMember key value t)
+    (h1 : bytesLt (maxKey l) key = true) (h2 : bytesLt key (minKey r) = true) : False := by
+  have hsN : SortedTree (.node ih pre mid suf l r) :=
+    subtree_sorted t hs _ hsub
+  have hsl := hsN.1
+  have hsr := hsN.2.1
+  have hlo : minKey (.node ih pre mid suf l r) = key ∨
+      bytesLt (minKey (.node ih pre mid suf l r)) key = true :=
+    ble_trans (minKey l) (maxKey l) key (minKey_le_maxKey l hsl) (Or.inr h1)
+  have hhi : key = maxKey (.node ih pre mid suf l r) ∨
+      bytesLt key (maxKey (.node ih pre mid suf l r)) = true :=
+    ble_trans key (minKey r) (maxKey r) (Or.inr h2) (minKey_le_maxKey r hsr)
+  have hmN := member_in_subtree_range t hs _ hsub key value hm hlo hhi
+  exact root_gap_no_member ih pre mid suf l r hsN key value hmN h1 h2
 
 /-- `ensure_inner`'s lower prefix bound. -/
 theorem ensureInner_minle (op : InnerOp) (s : ProofSpec) (h : ensureInner op s = true) :
