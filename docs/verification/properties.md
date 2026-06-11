@@ -148,6 +148,19 @@ Concrete malicious proofs, each targeting one invariant. To be encoded as Lean
   order iff position order). The `Order.lean` position lemmas are the start of
   stating that invariant; with it, the proof is: `key` between `l`,`r` in key
   order ⇒ (sortedness) between them in position order ⇒ contradicts adjacency.
+- **F5 — the adjacency step is hash-structural, not pure lex (proof-obligation
+  refinement).** The adjacency lemma (`ensure_left_neighbor` ⇒ no leaf position
+  strictly between the neighbors) is *not* provable from the `lexLt` order alone:
+  a position `C ++ [0] ++ (k+1 ones)` is lex-greater than the left neighbor
+  `C ++ [0] ++ (k ones)` yet still less than the right neighbor `C ++ [1] ++
+  (zeros)`. "No position between" holds only because the left neighbor's leaf is
+  **terminal** (no deeper-right leaf) — a fact about the tree's hash structure,
+  not the position order. A proof placing a leaf "past" the rightmost terminal
+  leaf forces an *inner* hash where the neighbor has a *leaf* hash, reducing to
+  `leaf_inner_domain_collision` (already proved). So Theorem B's remaining core is
+  the *integration* of the `Order.lean` position model with the hash-level
+  domain-separation machinery; the `lexLt` order theory is necessary scaffolding
+  but not sufficient alone.
 
 
 - **F1 — i32 prefix-bound overflow (malformed spec).** `ensure_inner` computes
