@@ -53,6 +53,22 @@ theorem leftBranchesAreEmpty_false_of_noEmpty (isp : InnerSpec) (op : InnerOp)
           rw [hse, List.length_nil] at hsl
           omega
 
+/-- The leaf position a path encodes: the branch each inner op takes, root→leaf.
+`none` if any step's branch is undetermined. -/
+def pathPosition (isp : InnerSpec) (path : List InnerOp) : Option (List Nat) :=
+  path.reverse.mapM (orderFromPadding isp)
+
+/-- If every element maps to `some 0`, `mapM` yields all zeros. -/
+theorem mapM_all_zero {α : Type} (l : List α) (f : α → Option Nat)
+    (h : ∀ a ∈ l, f a = some 0) :
+    l.mapM f = some (List.replicate l.length 0) := by
+  induction l with
+  | nil => rfl
+  | cons a t ih =>
+    rw [List.mapM_cons, h a (List.mem_cons_self ..),
+      ih (fun x hx => h x (List.mem_cons_of_mem a hx))]
+    rfl
+
 /-- A step matching branch 0's padding sits at branch 0 (left child): branch 0 is
 checked first by `order_from_padding`. -/
 theorem orderFromPadding_zero (isp : InnerSpec) (op : InnerOp) (pad0 : Padding)
@@ -82,6 +98,21 @@ theorem ensureLeftMost_allLeftPadding (isp : InnerSpec) (path : List InnerOp)
     have hstep := (List.all_eq_true.mp h) op hop
     rw [leftBranchesAreEmpty_false_of_noEmpty isp op hempty hcs, Bool.or_false] at hstep
     exact ⟨pad, rfl, hstep⟩
+
+/-- A left-most path's position is all-zeros (the leftmost leaf), for a spec with
+no empty children. The first concrete position computed from a path check. -/
+theorem ensureLeftMost_position (isp : InnerSpec) (path : List InnerOp)
+    (hempty : isp.emptyChild = []) (hcs : isp.childSize > 0)
+    (hn : 1 ≤ isp.childOrder.length)
+    (h : ensureLeftMost isp path = true) :
+    pathPosition isp path = some (List.replicate path.length 0) := by
+  unfold pathPosition
+  have hall : ∀ op ∈ path.reverse, orderFromPadding isp op = some 0 := by
+    intro op hop
+    rw [List.mem_reverse] at hop
+    obtain ⟨pad, hpad, hhp⟩ := ensureLeftMost_allLeftPadding isp path hempty hcs h op hop
+    exact orderFromPadding_zero isp op pad hn hpad hhp
+  rw [mapM_all_zero path.reverse (orderFromPadding isp) hall, List.length_reverse]
 
 /-- Symmetric fact: with no empty children, a step is never a (right) empty
 placeholder. -/
