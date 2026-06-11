@@ -241,8 +241,8 @@ theorem reaches (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
     (hmin : 1 ≤ s.innerSpec.minPrefixLength)
     (hmm : s.innerSpec.minPrefixLength = s.innerSpec.maxPrefixLength)
     (hbin : s.innerSpec.childOrder.length = 2)
-    (hLInj : ∀ k₁ v₁ k₂ v₂, applyLeaf H s.leafSpec k₁ v₁ = applyLeaf H s.leafSpec k₂ v₂ →
-      (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
+    (hLInj : ∀ k₁ v₁ k₂ v₂ r, applyLeaf H s.leafSpec k₁ v₁ = some r →
+      applyLeaf H s.leafSpec k₂ v₂ = some r → (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
     ∀ (t : MTree) (key value lh : Bytes) (path : List InnerOp) (root : Bytes),
       WFTree s b t →
       applyLeaf H s.leafSpec key value = some lh →
@@ -262,7 +262,7 @@ theorem reaches (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
       simp only [applyPath, Option.some.injEq] at hap
       -- lh = root, and lh = applyLeaf .. (key,value), root = applyLeaf .. (tk,tv)
       subst hap
-      rcases hLInj key value tk tv (by rw [hlh, hrh]) with ⟨hk, hv⟩ | hc
+      rcases hLInj key value tk tv _ hlh hrh with ⟨hk, hv⟩ | hc
       · exact Or.inl ⟨hk.symm, hv.symm⟩
       · exact Or.inr hc
     | cons op rest =>
@@ -334,8 +334,8 @@ theorem membership_sound (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
     (hmin : 1 ≤ s.innerSpec.minPrefixLength)
     (hmm : s.innerSpec.minPrefixLength = s.innerSpec.maxPrefixLength)
     (hbin : s.innerSpec.childOrder.length = 2)
-    (hLInj : ∀ k₁ v₁ k₂ v₂, applyLeaf H s.leafSpec k₁ v₁ = applyLeaf H s.leafSpec k₂ v₂ →
-      (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
+    (hLInj : ∀ k₁ v₁ k₂ v₂ r, applyLeaf H s.leafSpec k₁ v₁ = some r →
+      applyLeaf H s.leafSpec k₂ v₂ = some r → (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
     ∀ (t : MTree) (ep : ExistenceProof) (root key value : Bytes),
       WFTree s b t →
       ep.leaf = s.leafSpec →
@@ -367,13 +367,15 @@ theorem membership_sound (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
       (verifyExistence_inners H ep s root key value hver) hrh hap
 
 /-- **Honest-root Theorem A for the Tendermint spec.** All structural side
-conditions are discharged by computation; only the genuine cryptographic
-assumptions remain: a fixed 32-byte digest (`FixedHash`) and joint leaf
-injectivity (`hLInj`, provable from the varint self-delimiting + SHA-256). -/
+conditions are discharged by computation; the remaining hypotheses are the
+genuine cryptographic assumptions: a fixed 32-byte digest (`FixedHash`) and joint
+leaf injectivity (`hLInj`, which follows from the varint self-delimiting + SHA-256
+collision resistance). -/
 theorem membership_sound_tendermint (H : HashFn)
     (hH : FixedHash H 32)
-    (hLInj : ∀ k₁ v₁ k₂ v₂,
-      applyLeaf H tendermintSpec.leafSpec k₁ v₁ = applyLeaf H tendermintSpec.leafSpec k₂ v₂ →
+    (hLInj : ∀ k₁ v₁ k₂ v₂ r,
+      applyLeaf H tendermintSpec.leafSpec k₁ v₁ = some r →
+      applyLeaf H tendermintSpec.leafSpec k₂ v₂ = some r →
       (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
     ∀ (t : MTree) (ep : ExistenceProof) (root key value : Bytes),
       WFTree tendermintSpec 0 t →
