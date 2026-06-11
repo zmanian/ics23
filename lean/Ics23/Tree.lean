@@ -366,4 +366,22 @@ theorem membership_sound (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
       t key value lh ep.path root hwf hlf
       (verifyExistence_inners H ep s root key value hver) hrh hap
 
+/-- **Honest-root Theorem A for the Tendermint spec.** All structural side
+conditions are discharged by computation; only the genuine cryptographic
+assumptions remain: a fixed 32-byte digest (`FixedHash`) and joint leaf
+injectivity (`hLInj`, provable from the varint self-delimiting + SHA-256). -/
+theorem membership_sound_tendermint (H : HashFn)
+    (hH : FixedHash H 32)
+    (hLInj : ∀ k₁ v₁ k₂ v₂,
+      applyLeaf H tendermintSpec.leafSpec k₁ v₁ = applyLeaf H tendermintSpec.leafSpec k₂ v₂ →
+      (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
+    ∀ (t : MTree) (ep : ExistenceProof) (root key value : Bytes),
+      WFTree tendermintSpec 0 t →
+      ep.leaf = tendermintSpec.leafSpec →
+      rootHash H t = some root →
+      verifyExistence H ep tendermintSpec root key value = true →
+      TreeMember key value t ∨ HashCollision H :=
+  membership_sound H tendermintSpec 0 32 hH (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide) (by decide) hLInj
+
 end Ics23
