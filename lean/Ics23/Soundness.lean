@@ -120,6 +120,30 @@ theorem hasPrefix_refl (b : Bytes) : hasPrefix b b = true := by
   unfold hasPrefix
   simp
 
+/-- If `[b]` is a prefix of `data`, then `data` starts with `b`. -/
+theorem hasPrefix_single_head (b : UInt8) (data : Bytes)
+    (h : hasPrefix [b] data = true) : data.head? = some b := by
+  cases data with
+  | nil => simp [hasPrefix] at h
+  | cons x xs =>
+    unfold hasPrefix at h
+    simp only [List.length_cons, List.length_nil, List.take_succ_cons, List.take_zero,
+      Bool.and_eq_true] at h
+    have hx : b = x := by have := eq_of_beq h.2; simpa using this
+    simp [hx]
+
+/-- If `[b]` is *not* a prefix of a non-empty `data`, then `data` does not start
+with `b`. -/
+theorem not_hasPrefix_single_head (b x : UInt8) (xs : Bytes)
+    (h : hasPrefix [b] (x :: xs) = false) : (x :: xs).head? ≠ some b := by
+  unfold hasPrefix at h
+  simp only [List.length_cons, List.length_nil, List.take_succ_cons, List.take_zero,
+    Bool.and_eq_false_iff, decide_eq_false_iff_not, Nat.not_le] at h
+  simp only [List.head?_cons, ne_eq, Option.some.injEq]
+  rcases h with hc | hbeq
+  · omega
+  · intro hxb; rw [hxb] at hbeq; simp at hbeq
+
 /-- Packaging a witnessed clash as a `HashCollision`. -/
 theorem hashCollision_of (H : HashFn) (op : HashOp) (a b : Bytes)
     (hne : a ≠ b) (heq : H op a = H op b) : HashCollision H :=
