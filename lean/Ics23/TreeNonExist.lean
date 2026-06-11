@@ -496,6 +496,66 @@ theorem ensureRightMost_suffix_nil (isp : InnerSpec) (cs : Nat)
           exact hec (by rw [← h0]; exact hsl.trans hcsspec)
         · rw [if_pos hsl] at hr; simp at hr
 
+/-- `order_from_padding` returns an in-range branch whose padding the op matches. -/
+theorem orderFromPadding_mem (isp : InnerSpec) (op : InnerOp) (idx : Nat)
+    (h : orderFromPadding isp op = some idx) :
+    idx < isp.childOrder.length ∧ ∃ pad, getPadding isp idx = some pad ∧ hasPadding op pad = true := by
+  unfold orderFromPadding at h
+  have hmem := List.mem_of_find?_eq_some h
+  have hpred := List.find?_some h
+  rw [List.mem_range] at hmem
+  refine ⟨hmem, ?_⟩
+  cases hgp : getPadding isp idx with
+  | none => rw [hgp] at hpred; simp at hpred
+  | some pad => rw [hgp] at hpred; exact ⟨pad, rfl, hpred⟩
+
+/-- For a binary spec, an `is_left_step` pair has a full-`cs` left suffix and an
+empty right suffix (orders 0 and 1). -/
+theorem isLeftStep_binary (isp : InnerSpec) (cs : Nat)
+    (hco : isp.childOrder = [0, 1]) (hcsspec : isp.childSize.toNat = cs)
+    (l r : InnerOp) (h : isLeftStep isp l r = true) :
+    l.suffix.length = cs ∧ r.suffix.length = 0 := by
+  unfold isLeftStep at h
+  cases hol : orderFromPadding isp l with
+  | none => rw [hol] at h; simp at h
+  | some li =>
+  cases hor : orderFromPadding isp r with
+  | none => rw [hol, hor] at h; simp at h
+  | some ri =>
+    rw [hol, hor] at h
+    simp only [decide_eq_true_eq] at h
+    obtain ⟨hlilt, padl, hpadl, hhpl⟩ := orderFromPadding_mem isp l li hol
+    obtain ⟨hrilt, padr, hpadr, hhpr⟩ := orderFromPadding_mem isp r ri hor
+    rw [hco] at hlilt hrilt
+    simp only [List.length_cons, List.length_nil] at hlilt hrilt
+    have hli0 : li = 0 := by omega
+    have hri1 : ri = 1 := by omega
+    subst hli0; subst hri1
+    have hpl0 : getPadding isp 0
+        = some { minPrefix := (0 : Int) * isp.childSize + isp.minPrefixLength,
+                 maxPrefix := (0 : Int) * isp.childSize + isp.maxPrefixLength,
+                 suffix := isp.childSize * ((2 : Int) - 1 - 0) } := by
+      unfold getPadding; rw [hco]; rfl
+    have hpr1 : getPadding isp 1
+        = some { minPrefix := (1 : Int) * isp.childSize + isp.minPrefixLength,
+                 maxPrefix := (1 : Int) * isp.childSize + isp.maxPrefixLength,
+                 suffix := isp.childSize * ((2 : Int) - 1 - 1) } := by
+      unfold getPadding; rw [hco]; rfl
+    rw [hpl0, Option.some.injEq] at hpadl; subst hpadl
+    rw [hpr1, Option.some.injEq] at hpadr; subst hpadr
+    unfold hasPadding at hhpl hhpr
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at hhpl hhpr
+    constructor
+    · have hz : (l.suffix.length : Int) = isp.childSize * ((2 : Int) - 1 - 0) := hhpl.2
+      have he1 : ((2 : Int) - 1 - 0) = 1 := by decide
+      rw [he1, Int.mul_one] at hz
+      have : l.suffix.length = isp.childSize.toNat := by omega
+      rw [this, hcsspec]
+    · have hz : (r.suffix.length : Int) = isp.childSize * ((2 : Int) - 1 - 1) := hhpr.2
+      have he0 : ((2 : Int) - 1 - 1) = 0 := by decide
+      rw [he0, Int.mul_zero] at hz
+      exact_mod_cast hz
+
 /-- Bridge (left-most, mirror of `ensureRightMost_suffix_nil`): every step of an
 `ensure_left_most` path has a full `cs`-byte suffix — a genuine left-pad, not a
 left-empty-branch placeholder (which would force `emptyChild.length = cs`). -/
@@ -551,5 +611,193 @@ theorem ensureLeftMost_suffix_cs (isp : InnerSpec) (cs : Nat)
           have hlen : ((op.prefixBytes.drop (op.prefixBytes.length - idx * isp.childSize.toNat)).take isp.childSize.toNat).length = isp.emptyChild.length := by rw [h0]
           rw [List.length_take, List.length_drop] at hlen
           exact hec (by omega)
+
+/-- **Neighbor walk → divergence node.** Two verifying existence proofs whose
+reversed paths share a root-side prefix and then diverge as a left-step (with
+right-most / left-most remainders) navigate to a common node `N` (a subtree of the
+honest tree): the left proof reaches `maxKey N.left`, the right proof reaches
+`minKey N.right` — up to a hash collision. This is the byte→tree bridge: it turns
+`ensure_left_neighbor`'s shape into a structural fact about where the proofs land. -/
+theorem neighbor_divergence (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
+    (hH : FixedHash H cs) (hcs : 0 < cs)
+    (hcsspec : s.innerSpec.childSize.toNat = cs)
+    (hihash : s.innerSpec.hash = s.leafSpec.hash)
+    (hlpre : s.leafSpec.prefixBytes = [b])
+    (hmin : 1 ≤ s.innerSpec.minPrefixLength)
+    (hmm : s.innerSpec.minPrefixLength = s.innerSpec.maxPrefixLength)
+    (hco : s.innerSpec.childOrder = [0, 1])
+    (hec : s.innerSpec.emptyChild.length ≠ cs)
+    (hLInj : ∀ k₁ v₁ k₂ v₂ r, applyLeaf H s.leafSpec k₁ v₁ = some r →
+      applyLeaf H s.leafSpec k₂ v₂ = some r → (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
+    ∀ (t : MTree) (lhLeaf rhLeaf root : Bytes)
+      (leftKey leftVal rightKey rightVal : Bytes)
+      (pathL pathR : List InnerOp)
+      (topLeft topRight : InnerOp) (restL restR : List InnerOp),
+      WFTree s b t →
+      applyLeaf H s.leafSpec leftKey leftVal = some lhLeaf →
+      applyLeaf H s.leafSpec rightKey rightVal = some rhLeaf →
+      (∀ op ∈ pathL, ensureInner op s = true) →
+      (∀ op ∈ pathR, ensureInner op s = true) →
+      rootHash H t = some root →
+      applyPath H s.innerSpec lhLeaf pathL = some root →
+      applyPath H s.innerSpec rhLeaf pathR = some root →
+      dropCommonPrefix pathL.reverse pathR.reverse = (some topLeft, restL, some topRight, restR) →
+      isLeftStep s.innerSpec topLeft topRight = true →
+      ensureRightMost s.innerSpec restL.reverse = true →
+      ensureLeftMost s.innerSpec restR.reverse = true →
+      (∃ ihN preN lN rN, IsSubtree (.node ihN preN [] [] lN rN) t ∧
+        (leftKey = maxKey lN ∨ HashCollision H) ∧
+        (rightKey = minKey rN ∨ HashCollision H))
+      ∨ HashCollision H := by
+  intro t
+  induction t with
+  | leaf top tk tv =>
+    intro lhLeaf rhLeaf root leftKey leftVal rightKey rightVal pathL pathR topLeft topRight restL restR
+      hwf hlhL hlhR hpathL hpathR hrh hapL hapR hdcp hls hrm hlm
+    cases pathL with
+    | nil =>
+      exfalso
+      rw [List.reverse_nil] at hdcp
+      rw [show dropCommonPrefix [] pathR.reverse
+          = ((none : Option InnerOp), ([] : List InnerOp), (none : Option InnerOp),
+             ([] : List InnerOp)) from rfl] at hdcp
+      exact absurd (congrArg Prod.fst hdcp) (by simp)
+    | cons op rest =>
+      simp only [WFTree] at hwf; subst hwf
+      rw [rootHash] at hrh
+      have hii : IsInnerImage H s root :=
+        applyPath_result_isInnerImage H s (op :: rest) lhLeaf root (by simp) hpathL hapL
+      exact Or.inr (leafHash_innerImage_collision H s s.leafSpec tk tv root b
+        hihash.symm hlpre hmin (ensureLeaf_self s.leafSpec) hrh hii)
+  | node ih pre mid suf l r ihl ihr =>
+    intro lhLeaf rhLeaf root leftKey leftVal rightKey rightVal pathL pathR topLeft topRight restL restR
+      hwf hlhL hlhR hpathL hpathR hrh hapL hapR hdcp hls hrm hlm
+    obtain ⟨hih, hmid, hsuf, hppre, hprene, hprehead, hwfl, hwfr⟩ := hwf
+    subst hmid; subst hsuf; subst hih
+    rw [rootHash] at hrh
+    cases hl : rootHash H l with
+    | none => rw [hl] at hrh; simp at hrh
+    | some lhL =>
+    cases hr : rootHash H r with
+    | none => rw [hl, hr] at hrh; simp at hrh
+    | some rhR =>
+    rw [hl, hr] at hrh
+    simp only [List.append_nil, Option.some.injEq] at hrh
+    -- both paths must be nonempty (else a leaf hash equals the node hash)
+    rcases List.eq_nil_or_concat pathL with hLnil | ⟨qL, topOpL, hLc⟩
+    · subst hLnil
+      simp only [applyPath, Option.some.injEq] at hapL
+      obtain ⟨tail, hlheq⟩ := applyLeaf_head H s.leafSpec leftKey leftVal lhLeaf b hlpre hlhL
+      rw [← hihash] at hlheq
+      refine Or.inr (leaf_inner_domain_collision H s.innerSpec.hash (b :: tail)
+        (pre ++ lhL ++ rhR) b (by simp) ?_ ?_)
+      · cases hpc2 : pre with
+        | nil => exact absurd hpc2 hprene
+        | cons x xs => rw [hpc2] at hprehead; simpa using hprehead
+      · rw [← hlheq, hapL]; exact hrh.symm
+    rcases List.eq_nil_or_concat pathR with hRnil | ⟨qR, topOpR, hRc⟩
+    · subst hRnil
+      simp only [applyPath, Option.some.injEq] at hapR
+      obtain ⟨tail, hlheq⟩ := applyLeaf_head H s.leafSpec rightKey rightVal rhLeaf b hlpre hlhR
+      rw [← hihash] at hlheq
+      refine Or.inr (leaf_inner_domain_collision H s.innerSpec.hash (b :: tail)
+        (pre ++ lhL ++ rhR) b (by simp) ?_ ?_)
+      · cases hpc2 : pre with
+        | nil => exact absurd hpc2 hprene
+        | cons x xs => rw [hpc2] at hprehead; simpa using hprehead
+      · rw [← hlheq, hapR]; exact hrh.symm
+    rw [List.concat_eq_append] at hLc hRc; subst hLc; subst hRc
+    simp only [List.reverse_append, List.reverse_singleton, List.singleton_append] at hdcp
+    obtain ⟨mL, hpmL, htopL, _⟩ := (applyPath_snoc H s.innerSpec qL topOpL lhLeaf root).mp hapL
+    obtain ⟨mR, hpmR, htopR, _⟩ := (applyPath_snoc H s.innerSpec qR topOpR rhLeaf root).mp hapR
+    have hmLlen : mL.length = cs := applyPath_len H s.innerSpec cs hH qL lhLeaf mL
+      (applyLeaf_len H cs hH s.leafSpec leftKey leftVal lhLeaf hlhL) hpmL
+    have hmRlen : mR.length = cs := applyPath_len H s.innerSpec cs hH qR rhLeaf mR
+      (applyLeaf_len H cs hH s.leafSpec rightKey rightVal rhLeaf hlhR) hpmR
+    have htopimgL := applyInner_image H topOpL mL root htopL
+    rw [ensureInner_hash topOpL s (hpathL topOpL (by simp))] at htopimgL
+    have htopimgR := applyInner_image H topOpR mR root htopR
+    rw [ensureInner_hash topOpR s (hpathR topOpR (by simp))] at htopimgR
+    have hlhLlen := rootHash_len H cs hH l lhL hl
+    have hrhRlen := rootHash_len H cs hH r rhR hr
+    have hlowL : pre.length ≤ topOpL.prefixBytes.length := by
+      have := ensureInner_minle topOpL s (hpathL topOpL (by simp)); omega
+    have hlowR : pre.length ≤ topOpR.prefixBytes.length := by
+      have := ensureInner_minle topOpR s (hpathR topOpR (by simp)); omega
+    unfold dropCommonPrefix at hdcp
+    by_cases heq : eqPS topOpL topOpR = true
+    · -- common root step: both proofs navigate into the SAME child; recurse
+      rw [if_pos heq] at hdcp
+      unfold eqPS at heq
+      simp only [Bool.and_eq_true, beq_iff_eq] at heq
+      obtain ⟨hpreEq, hsufEq⟩ := heq
+      by_cases hpeL : topOpL.prefixBytes ++ mL ++ topOpL.suffix = pre ++ lhL ++ rhR
+      · by_cases hpeR : topOpR.prefixBytes ++ mR ++ topOpR.suffix = pre ++ lhL ++ rhR
+        · -- both top ops genuinely match the node split: mL = mR
+          have hcat : topOpL.prefixBytes ++ mL = topOpL.prefixBytes ++ mR := by
+            have hee : (topOpL.prefixBytes ++ mL) ++ topOpL.suffix
+                = (topOpL.prefixBytes ++ mR) ++ topOpL.suffix := by
+              rw [hpeL]; rw [hpreEq, hsufEq] at *; rw [hpeR]
+            exact (List.append_inj hee (by simp [hmLlen, hmRlen])).1
+          have hmEq : mL = mR := List.append_cancel_left hcat
+          obtain ⟨hb1, hb2, hb7⟩ := split_bounds topOpL s cs pre.length hcsspec hmm
+            (by rw [hco]; rfl) hppre (hpathL topOpL (by simp))
+          rcases split_pins pre lhL rhR topOpL.prefixBytes mL topOpL.suffix cs pre.length
+            hpeL rfl hlhLlen hrhRlen hmLlen hcs hb1 hb2 hb7 with hmlL | hmrL
+          · rw [hmlL] at hpmL
+            rw [← hmEq, hmlL] at hpmR
+            rcases ihl lhLeaf rhLeaf lhL leftKey leftVal rightKey rightVal qL qR
+              topLeft topRight restL restR hwfl hlhL hlhR
+              (fun o ho => hpathL o (List.mem_append.mpr (Or.inl ho)))
+              (fun o ho => hpathR o (List.mem_append.mpr (Or.inl ho)))
+              hl hpmL hpmR hdcp hls hrm hlm with hex | hc
+            · obtain ⟨ihN, preN, lN, rN, hsub, h1, h2⟩ := hex
+              exact Or.inl ⟨ihN, preN, lN, rN, by simp only [IsSubtree]; exact Or.inr (Or.inl hsub), h1, h2⟩
+            · exact Or.inr hc
+          · rw [hmrL] at hpmL
+            rw [← hmEq, hmrL] at hpmR
+            rcases ihr lhLeaf rhLeaf rhR leftKey leftVal rightKey rightVal qL qR
+              topLeft topRight restL restR hwfr hlhL hlhR
+              (fun o ho => hpathL o (List.mem_append.mpr (Or.inl ho)))
+              (fun o ho => hpathR o (List.mem_append.mpr (Or.inl ho)))
+              hr hpmL hpmR hdcp hls hrm hlm with hex | hc
+            · obtain ⟨ihN, preN, lN, rN, hsub, h1, h2⟩ := hex
+              exact Or.inl ⟨ihN, preN, lN, rN, by simp only [IsSubtree]; exact Or.inr (Or.inr hsub), h1, h2⟩
+            · exact Or.inr hc
+        · exact Or.inr (hashCollision_of H s.innerSpec.hash _ _ hpeR (htopimgR.trans hrh.symm))
+      · exact Or.inr (hashCollision_of H s.innerSpec.hash _ _ hpeL (htopimgL.trans hrh.symm))
+    · -- divergence here: this node IS the neighbor node N
+      rw [if_neg heq] at hdcp
+      simp only [Prod.mk.injEq, Option.some.injEq] at hdcp
+      obtain ⟨htL, hrestL, htR, hrestR⟩ := hdcp
+      subst htL; subst htR
+      rw [← hrestL, List.reverse_reverse] at hrm
+      rw [← hrestR, List.reverse_reverse] at hlm
+      obtain ⟨hsufL, hsufR⟩ := isLeftStep_binary s.innerSpec cs hco hcsspec topOpL topOpR hls
+      by_cases hpeL : topOpL.prefixBytes ++ mL ++ topOpL.suffix = pre ++ lhL ++ rhR
+      · by_cases hpeR : topOpR.prefixBytes ++ mR ++ topOpR.suffix = pre ++ lhL ++ rhR
+        · have hmlL : mL = lhL := split_left pre lhL rhR topOpL.prefixBytes mL topOpL.suffix cs
+            hpeL hlowL hlhLlen hrhRlen hmLlen hsufL
+          have hmrR : mR = rhR := split_right pre lhL rhR topOpR.prefixBytes mR topOpR.suffix cs
+            hpeR hlhLlen hrhRlen hmRlen hsufR
+          rw [hmlL] at hpmL
+          rw [hmrR] at hpmR
+          have hqLspec : ∀ op ∈ qL, ensureInner op s = true ∧ op.suffix = [] := fun op hop =>
+            ⟨hpathL op (List.mem_append.mpr (Or.inl hop)),
+             ensureRightMost_suffix_nil s.innerSpec cs hco hcsspec hec qL hrm op hop⟩
+          have hqRspec : ∀ op ∈ qR, ensureInner op s = true ∧ op.suffix.length = cs := fun op hop =>
+            ⟨hpathR op (List.mem_append.mpr (Or.inl hop)),
+             ensureLeftMost_suffix_cs s.innerSpec cs hco hcsspec hec qR hlm op hop⟩
+          refine Or.inl ⟨s.innerSpec.hash, pre, l, r, Or.inl rfl, ?_, ?_⟩
+          · rcases reaches_max H s b cs hH hihash hlpre hmin hLInj l leftKey leftVal lhLeaf qL lhL
+              hwfl hlhL hqLspec hl hpmL with ⟨hk, _⟩ | hc
+            · exact Or.inl hk
+            · exact Or.inr hc
+          · rcases reaches_min H s b cs hH hihash hlpre hmin hLInj r rightKey rightVal rhLeaf qR rhR
+              hwfr hlhR hqRspec hr hpmR with ⟨hk, _⟩ | hc
+            · exact Or.inl hk
+            · exact Or.inr hc
+        · exact Or.inr (hashCollision_of H s.innerSpec.hash _ _ hpeR (htopimgR.trans hrh.symm))
+      · exact Or.inr (hashCollision_of H s.innerSpec.hash _ _ hpeL (htopimgL.trans hrh.symm))
 
 end Ics23
