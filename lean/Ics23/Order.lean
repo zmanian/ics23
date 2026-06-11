@@ -9,8 +9,17 @@ covers IAVL and Tendermint; there the placeholder logic never fires, so the
 checks reduce cleanly to "every step is the leftmost / rightmost branch".
 -/
 import Ics23.NonExist
+import Ics23.Verify
 
 namespace Ics23
+
+/-- Lexicographic order on leaf positions (root→leaf branch sequences),
+shorter-is-less — the order in which leaves appear left-to-right. -/
+def lexLt : List Nat → List Nat → Bool
+  | [], [] => false
+  | [], _ :: _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs => if a < b then true else if a == b then lexLt as bs else false
 
 /-- A successful `byteRange` returns a slice of exactly the requested length. -/
 theorem byteRange_length (data : Bytes) (start len : Nat) (s : Bytes)
@@ -57,6 +66,19 @@ theorem leftBranchesAreEmpty_false_of_noEmpty (isp : InnerSpec) (op : InnerOp)
 `none` if any step's branch is undetermined. -/
 def pathPosition (isp : InnerSpec) (path : List InnerOp) : Option (List Nat) :=
   path.reverse.mapM (orderFromPadding isp)
+
+/-- The store key-sortedness invariant (finding F4): any two existence proofs to
+`root` agree on order — left-to-right *position* order matches key order. This is
+the hypothesis ICS23 requires ("stores must be lexicographically ordered") and
+that `verify_non_existence` does **not** itself enforce. -/
+def KeySorted (H : HashFn) (s : ProofSpec) (root : Bytes) : Prop :=
+  ∀ (ep₁ ep₂ : ExistenceProof) (pos₁ pos₂ : List Nat),
+    verifyExistence H ep₁ s root ep₁.key ep₁.value = true →
+    verifyExistence H ep₂ s root ep₂.key ep₂.value = true →
+    pathPosition s.innerSpec ep₁.path = some pos₁ →
+    pathPosition s.innerSpec ep₂.path = some pos₂ →
+    (lexLt pos₁ pos₂ = true ↔
+      bytesLt (keyForComparison H s ep₁.key) (keyForComparison H s ep₂.key) = true)
 
 /-- If every element maps to `some 0`, `mapM` yields all zeros. -/
 theorem mapM_all_zero {α : Type} (l : List α) (f : α → Option Nat)

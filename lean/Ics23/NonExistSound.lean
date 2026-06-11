@@ -9,6 +9,7 @@ was staged). Only `nonexistence_sound` uses `sorry`.
 -/
 import Ics23.NonExist
 import Ics23.Soundness
+import Ics23.Order
 
 namespace Ics23
 
@@ -120,6 +121,7 @@ theorem nonexistence_sound
     (H : HashFn) (hNoHash : ∀ b, H .noHash b = b)
     (s : ProofSpec) (hwf : WellFormed s)
     (root key value : Bytes)
+    (hsorted : KeySorted H s root)
     (nep : NonExistenceProof) (ep : ExistenceProof)
     (hkey : ep.key = key)
     (hne : verifyNonExistence H nep s root key = true)
