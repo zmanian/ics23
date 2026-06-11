@@ -53,6 +53,19 @@ theorem leftBranchesAreEmpty_false_of_noEmpty (isp : InnerSpec) (op : InnerOp)
           rw [hse, List.length_nil] at hsl
           omega
 
+/-- A step matching branch 0's padding sits at branch 0 (left child): branch 0 is
+checked first by `order_from_padding`. -/
+theorem orderFromPadding_zero (isp : InnerSpec) (op : InnerOp) (pad0 : Padding)
+    (hn : 1 ≤ isp.childOrder.length)
+    (hpad : getPadding isp 0 = some pad0) (h : hasPadding op pad0 = true) :
+    orderFromPadding isp op = some 0 := by
+  unfold orderFromPadding
+  cases hlen : isp.childOrder.length with
+  | zero => rw [hlen] at hn; omega
+  | succ m =>
+    rw [List.range_succ_eq_map, List.find?_cons]
+    simp only [hpad, h]
+
 /-- For a spec with no empty children, `ensure_left_most` forces every step to
 match the left-branch (branch 0) padding — i.e. every step is a genuine left
 child. The first ordered-tree-position fact. -/
