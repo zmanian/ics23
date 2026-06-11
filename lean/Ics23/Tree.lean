@@ -110,13 +110,52 @@ theorem split_pins (pre lh rh topPre m topSuf : Bytes) (cs p : Nat)
     have hA := List.append_inj hN htplen
     exact (List.append_inj hA.2 (by rw [hm, hlh])).1
 
+/-- Tendermint-shaped conformance of a tree to a spec: nodes use the inner-spec
+hash with empty `mid`/`suf` (`node = H ih (pre ++ lh ++ rh)`), a node prefix that
+is nonempty and not leaf-prefixed (domain separation), and leaves whose op is
+exactly the spec leaf op. Models the CometBFT simple-merkle shape. -/
+def WFTree (s : ProofSpec) (b : UInt8) : MTree → Prop
+  | .leaf op _ _ => op = s.leafSpec
+  | .node ih pre mid suf l r =>
+      ih = s.innerSpec.hash ∧ mid = [] ∧ suf = [] ∧
+      pre ≠ [] ∧ pre.head? ≠ some b ∧
+      WFTree s b l ∧ WFTree s b r
+
+/-- A fixed-length hash family (`cs`-byte digests), with `cs = child_size`. The
+honest setting: SHA-256 outputs 32 bytes and the binary specs set
+`child_size = 32`. -/
+def FixedHash (H : HashFn) (cs : Nat) : Prop := ∀ (op : HashOp) (d : Bytes), (H op d).length = cs
+
+/-- `applyLeaf` / `applyInner` outputs are `cs`-length digests. -/
+theorem applyLeaf_len (H : HashFn) (cs : Nat) (hH : FixedHash H cs)
+    (leaf : LeafOp) (k v r : Bytes) (h : applyLeaf H leaf k v = some r) : r.length = cs := by
+  unfold applyLeaf at h
+  cases hpk : prepareLeafData H leaf.prehashKey leaf.length k with
+  | none => simp [hpk] at h
+  | some pk =>
+  cases hpv : prepareLeafData H leaf.prehashValue leaf.length v with
+  | none => simp [hpk, hpv] at h
+  | some pv =>
+  rw [hpk, hpv] at h; simp only [Option.some.injEq] at h
+  rw [← h]; exact hH _ _
+
+theorem applyInner_len (H : HashFn) (cs : Nat) (hH : FixedHash H cs)
+    (op : InnerOp) (c r : Bytes) (h : applyInner H op c = some r) : r.length = cs := by
+  have := applyInner_image H op c r h
+  rw [← this]; exact hH _ _
+
 /-- **Membership soundness (Theorem A, honest-root form).** If `root` is the hash
-of a real tree `t` and an existence proof for `(key, value)` verifies against
-`root`, then `(key, value)` is genuinely in `t` — or the proof exhibits a hash
-collision. No ambiguity arm: against a real root, the F3 readings are genuine
-left/right children. -/
-theorem membership_sound (H : HashFn) (s : ProofSpec) :
+of a real (Tendermint-shaped) tree `t` and an existence proof for `(key, value)`
+verifies against `root`, then `(key, value)` is genuinely in `t` — or the proof
+exhibits a hash collision. No ambiguity arm: against a real root, `split_pins`
+forces the F3 readings to be genuine left/right children. -/
+theorem membership_sound (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
+    (hH : FixedHash H cs) (hcs : 0 < cs)
+    (hcsspec : s.innerSpec.childSize.toNat = cs)
+    (hlhash : s.leafSpec.hash = s.innerSpec.hash)
+    (hlpre : s.leafSpec.prefixBytes = [b]) :
     ∀ (t : MTree) (ep : ExistenceProof) (root key value : Bytes),
+      WFTree s b t →
       rootHash H t = some root →
       verifyExistence H ep s root key value = true →
       TreeMember key value t ∨ HashCollision H := by
