@@ -238,10 +238,11 @@ the corpus.
    positional ambiguity is fully resolved by `split_pins`: the verifier's
    `suffix % child_size` check pins a node split to exactly the two genuine
    children, so an accepted proof follows actual tree structure. Instantiated:
-   `membership_sound_tendermint` (structural side conditions by `decide`; only
-   `FixedHash` + joint leaf injectivity remain as clean crypto assumptions). This
-   is Option 1 delivered for existence — it removes the byte-level disjunction's
-   ambiguity arms entirely.
+   `membership_sound_tendermint` (structural side conditions by `decide`; joint
+   leaf injectivity now *proved* in `leafInj_tendermint`/`leafInj_varProto`, so
+   `FixedHash` is the only remaining clean crypto assumption). This is Option 1
+   delivered for existence — it removes the byte-level disjunction's ambiguity
+   arms entirely.
 
 1. **Theorem A — DONE (existence binding, byte-level).** Fully proved, no `sorry`:
    `existence_binding_shaped` (general, production-spec shape) concludes the

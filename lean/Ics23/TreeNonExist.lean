@@ -886,15 +886,11 @@ theorem nonexistence_sound_tree (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : N
   · exact hc
 
 /-- **Theorem B for the Tendermint spec (two-sided).** Structural side conditions
-discharged by computation; the remaining hypotheses are the genuine cryptographic
-assumptions (`FixedHash` + joint leaf injectivity). Mirrors
-`membership_sound_tendermint`. -/
+discharged by computation, joint leaf injectivity now *proved*
+(`leafInj_tendermint`); the single remaining hypothesis is the genuine
+cryptographic assumption (`FixedHash`). Mirrors `membership_sound_tendermint`. -/
 theorem nonexistence_sound_tree_tendermint (H : HashFn)
     (hH : FixedHash H 32)
-    (hLInj : ∀ k₁ v₁ k₂ v₂ r,
-      applyLeaf H tendermintSpec.leafSpec k₁ v₁ = some r →
-      applyLeaf H tendermintSpec.leafSpec k₂ v₂ = some r →
-      (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H)
     (t : MTree) (hwf : WFTree tendermintSpec 0 t) (hsort : SortedTree t)
     (root key value : Bytes) (hroot : rootHash H t = some root)
     (nep : NonExistenceProof) (ep lp rp : ExistenceProof)
@@ -907,7 +903,7 @@ theorem nonexistence_sound_tree_tendermint (H : HashFn)
     HashCollision H :=
   nonexistence_sound_tree H tendermintSpec 0 32 hH (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) (by decide)
-    (fun k => by simp [keyForComparison, tendermintSpec]) hLInj
+    (fun k => by simp [keyForComparison, tendermintSpec]) (leafInj_tendermint H)
     t hwf hsort root key value hroot nep ep lp rp hnl hnr hepleaf hlpleaf hrpleaf hkey hne hex
 
 end Ics23

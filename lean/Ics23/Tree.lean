@@ -22,6 +22,7 @@ so a left-child op `{ih, pre, mid++rh++suf}` and a right-child op
 import Ics23.Verify
 import Ics23.Soundness
 import Ics23.Existence
+import Ics23.LeafInj
 
 namespace Ics23
 
@@ -391,16 +392,12 @@ theorem membership_sound (H : HashFn) (s : ProofSpec) (b : UInt8) (cs : Nat)
       (verifyExistence_inners H ep s root key value hver) hrh hap
 
 /-- **Honest-root Theorem A for the Tendermint spec.** All structural side
-conditions are discharged by computation; the remaining hypotheses are the
-genuine cryptographic assumptions: a fixed 32-byte digest (`FixedHash`) and joint
-leaf injectivity (`hLInj`, which follows from the varint self-delimiting + SHA-256
-collision resistance). -/
+conditions are discharged by computation, and joint leaf injectivity is now
+*proved* (`leafInj_tendermint`, from varint self-delimiting + the collision
+escape). The single remaining hypothesis is the genuine cryptographic assumption:
+a fixed 32-byte digest (`FixedHash`). -/
 theorem membership_sound_tendermint (H : HashFn)
-    (hH : FixedHash H 32)
-    (hLInj : ∀ k₁ v₁ k₂ v₂ r,
-      applyLeaf H tendermintSpec.leafSpec k₁ v₁ = some r →
-      applyLeaf H tendermintSpec.leafSpec k₂ v₂ = some r →
-      (k₁ = k₂ ∧ v₁ = v₂) ∨ HashCollision H) :
+    (hH : FixedHash H 32) :
     ∀ (t : MTree) (ep : ExistenceProof) (root key value : Bytes),
       WFTree tendermintSpec 0 t →
       ep.leaf = tendermintSpec.leafSpec →
@@ -408,6 +405,6 @@ theorem membership_sound_tendermint (H : HashFn)
       verifyExistence H ep tendermintSpec root key value = true →
       TreeMember key value t ∨ HashCollision H :=
   membership_sound H tendermintSpec 0 32 hH (by decide) (by decide) (by decide)
-    (by decide) (by decide) (by decide) (by decide) hLInj
+    (by decide) (by decide) (by decide) (by decide) (leafInj_tendermint H)
 
 end Ics23
