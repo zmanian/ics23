@@ -315,6 +315,128 @@ theorem applyPath_eqlen_merge (H : HashFn) (s : ProofSpec) :
                   · exact Or.inr (Or.inl ⟨op1, op2, h₁, h₂, hin1, hin2, hop, hPeq⟩)
                 · exact Or.inl (hashCollision_of H op2.hash _ _ hPeq (hP1.trans hP2.symm))
 
+/-- Root-side characterization of a path fold: peeling the last (root-most) op.
+Enables aligning two differing-length folds from the root. -/
+theorem applyPath_snoc (H : HashFn) (isp : InnerSpec) :
+    ∀ (p : List InnerOp) (op : InnerOp) (h r : Bytes),
+      applyPath H isp h (p ++ [op]) = some r ↔
+      ∃ m, applyPath H isp h p = some m ∧ applyInner H op m = some r ∧
+           ¬((r.length : Int) > isp.childSize ∧ isp.childSize ≥ 32) := by
+  intro p
+  induction p with
+  | nil =>
+    intro op h r
+    simp only [List.nil_append]
+    constructor
+    · intro hh
+      simp only [applyPath] at hh
+      cases hA : applyInner H op h with
+      | none => simp only [hA] at hh; simp at hh
+      | some h' =>
+        simp only [hA] at hh
+        by_cases g : (h'.length : Int) > isp.childSize ∧ isp.childSize ≥ 32
+        · rw [if_pos g] at hh; simp at hh
+        · rw [if_neg g] at hh
+          simp only [Option.some.injEq] at hh
+          subst hh
+          exact ⟨h, rfl, hA, g⟩
+    · rintro ⟨m, hm, hop, hg⟩
+      simp only [applyPath, Option.some.injEq] at hm
+      subst hm
+      simp only [applyPath, hop]
+      rw [if_neg hg]
+  | cons a rest ih =>
+    intro op h r
+    simp only [List.cons_append]
+    constructor
+    · intro hh
+      simp only [applyPath] at hh
+      cases hA : applyInner H a h with
+      | none => simp only [hA] at hh; simp at hh
+      | some h' =>
+        simp only [hA] at hh
+        by_cases g : (h'.length : Int) > isp.childSize ∧ isp.childSize ≥ 32
+        · rw [if_pos g] at hh; simp at hh
+        · rw [if_neg g] at hh
+          obtain ⟨m, hm, hop, hgr⟩ := (ih op h' r).mp hh
+          refine ⟨m, ?_, hop, hgr⟩
+          simp only [applyPath, hA]; rw [if_neg g]; exact hm
+    · rintro ⟨m, hm, hop, hgr⟩
+      simp only [applyPath] at hm
+      cases hA : applyInner H a h with
+      | none => simp only [hA] at hm; simp at hm
+      | some h' =>
+        simp only [hA] at hm
+        by_cases g : (h'.length : Int) > isp.childSize ∧ isp.childSize ≥ 32
+        · rw [if_pos g] at hm; simp at hm
+        · rw [if_neg g] at hm
+          simp only [applyPath, hA]; rw [if_neg g]
+          exact (ih op h' r).mpr ⟨m, hm, hop, hgr⟩
+
+/-- **Root-side merge.** Two spec-conformant paths folding `h₁`, `h₂` to the same
+root yield: a collision, the F3 ambiguity, equal inputs, or one input being an
+inner-node image (the length-mismatch case, discharged at the leaf level by
+domain separation). Root-side recursion keeps `h₁, h₂` fixed, so the conclusion is
+about the original inputs. This is the structural core of general binding. -/
+theorem applyPath_merge (H : HashFn) (s : ProofSpec) :
+    ∀ (n : Nat) (p₁ p₂ : List InnerOp) (h₁ h₂ r : Bytes),
+      p₁.length + p₂.length = n →
+      (∀ op ∈ p₁, ensureInner op s = true) → (∀ op ∈ p₂, ensureInner op s = true) →
+      applyPath H s.innerSpec h₁ p₁ = some r → applyPath H s.innerSpec h₂ p₂ = some r →
+      HashCollision H ∨ PositionalAmbiguity s ∨ h₁ = h₂
+        ∨ IsInnerImage H s h₁ ∨ IsInnerImage H s h₂ := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    intro p₁ p₂ h₁ h₂ r hn hin1 hin2 e1 e2
+    rcases List.eq_nil_or_concat p₁ with hp1 | ⟨q₁, op1, hp1⟩
+    · subst hp1
+      simp only [applyPath, Option.some.injEq] at e1
+      cases hp2c : p₂ with
+      | nil =>
+        rw [hp2c] at e2
+        simp only [applyPath, Option.some.injEq] at e2
+        exact Or.inr (Or.inr (Or.inl (e1.trans e2.symm)))
+      | cons a2 rest2 =>
+        have himg : IsInnerImage H s r :=
+          applyPath_result_isInnerImage H s p₂ h₂ r (by rw [hp2c]; simp)
+            hin2 e2
+        rw [← e1] at himg
+        exact Or.inr (Or.inr (Or.inr (Or.inl himg)))
+    · rw [List.concat_eq_append] at hp1
+      subst hp1
+      rcases List.eq_nil_or_concat p₂ with hp2 | ⟨q₂, op2, hp2⟩
+      · subst hp2
+        simp only [applyPath, Option.some.injEq] at e2
+        have himg : IsInnerImage H s r :=
+          applyPath_result_isInnerImage H s (q₁ ++ [op1]) h₁ r (by simp) hin1 e1
+        rw [← e2] at himg
+        exact Or.inr (Or.inr (Or.inr (Or.inr himg)))
+      · rw [List.concat_eq_append] at hp2
+        subst hp2
+        obtain ⟨m₁, hm1, hop1, _⟩ := (applyPath_snoc H s.innerSpec q₁ op1 h₁ r).mp e1
+        obtain ⟨m₂, hm2, hop2, _⟩ := (applyPath_snoc H s.innerSpec q₂ op2 h₂ r).mp e2
+        have hP1 := applyInner_image H op1 m₁ r hop1
+        have hP2 := applyInner_image H op2 m₂ r hop2
+        have hin1' : ensureInner op1 s = true := hin1 op1 (by simp)
+        have hin2' : ensureInner op2 s = true := hin2 op2 (by simp)
+        have hhash : op1.hash = op2.hash :=
+          (ensureInner_hash op1 s hin1').trans (ensureInner_hash op2 s hin2').symm
+        rw [hhash] at hP1
+        by_cases hPeq :
+            op1.prefixBytes ++ m₁ ++ op1.suffix = op2.prefixBytes ++ m₂ ++ op2.suffix
+        · by_cases hop : op1 = op2
+          · subst hop
+            have hmeq : m₁ = m₂ := (innerImage_inj op1 m₁ m₂).mp hPeq
+            subst hmeq
+            have hlt : q₁.length + q₂.length < n := by
+              simp only [List.length_append, List.length_cons, List.length_nil] at hn; omega
+            exact ih (q₁.length + q₂.length) hlt q₁ q₂ h₁ h₂ m₁ rfl
+              (fun o ho => hin1 o (List.mem_append.mpr (Or.inl ho)))
+              (fun o ho => hin2 o (List.mem_append.mpr (Or.inl ho))) hm1 hm2
+          · exact Or.inr (Or.inl ⟨op1, op2, m₁, m₂, hin1', hin2', hop, hPeq⟩)
+        · exact Or.inl (hashCollision_of H op2.hash _ _ hPeq (hP1.trans hP2.symm))
+
 /-! ## Theorem A: existence binding (soundness)
 
 A single root cannot bind one key to two different values without a hash
