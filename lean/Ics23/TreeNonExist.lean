@@ -443,4 +443,113 @@ theorem ensureLeftNeighbor_spec (isp : InnerSpec) (left right : List InnerOp)
     exact ⟨topLeft, restL, topRight, restR, heq, h.1.1, h.1.2, h.2⟩
   · exact absurd h (by simp)
 
+/-- Bridge (the padding-vs-navigation subtlety, finding F4/F5): for a binary spec
+whose `emptyChild` sentinel is not a full `cs`-byte digest (the Tendermint shape,
+`emptyChild = []`), every step of an `ensure_right_most` path has an *empty*
+suffix — i.e. it is a genuine right-pad, not an empty-branch placeholder. The
+placeholder branch would require `emptyChild.length = cs`, excluded by `hec`. -/
+theorem ensureRightMost_suffix_nil (isp : InnerSpec) (cs : Nat)
+    (hco : isp.childOrder = [0, 1])
+    (hcsspec : isp.childSize.toNat = cs)
+    (hec : isp.emptyChild.length ≠ cs)
+    (path : List InnerOp) (h : ensureRightMost isp path = true) :
+    ∀ op, op ∈ path → op.suffix = [] := by
+  intro op hop
+  have hpadeq : getPadding isp (isp.childOrder.length - 1)
+      = some { minPrefix := (1 : Int) * isp.childSize + isp.minPrefixLength,
+               maxPrefix := (1 : Int) * isp.childSize + isp.maxPrefixLength,
+               suffix := isp.childSize * ((2 : Int) - 1 - 1) } := by
+    unfold getPadding; rw [hco]; rfl
+  unfold ensureRightMost at h
+  rw [hpadeq] at h
+  rw [List.all_eq_true] at h
+  have hstep := h op hop
+  rw [Bool.or_eq_true] at hstep
+  rcases hstep with hp | hr
+  · -- genuine right-pad: suffix length equals pad.suffix = childSize * 0 = 0
+    unfold hasPadding at hp
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at hp
+    have hz : (op.suffix.length : Int) = 0 := by have := hp.2; simpa using this
+    have : op.suffix.length = 0 := by exact_mod_cast hz
+    exact List.length_eq_zero_iff.mp this
+  · -- placeholder: forces emptyChild.length = cs, contradicting hec
+    exfalso
+    unfold rightBranchesAreEmpty at hr
+    cases hofp : orderFromPadding isp op with
+    | none => rw [hofp] at hr; simp at hr
+    | some idx =>
+      rw [hofp, hco] at hr
+      simp only [List.length_cons, List.length_nil] at hr
+      by_cases hrb : (2 - 1 - idx) = 0
+      · rw [hrb] at hr; simp at hr
+      · rw [if_neg hrb] at hr
+        by_cases hsl : op.suffix.length = isp.childSize.toNat
+        · rw [if_neg (by omega)] at hr
+          have h0 : byteRange op.suffix (0 * isp.childSize.toNat) isp.childSize.toNat
+              == some isp.emptyChild := by
+            have := List.all_eq_true.mp hr 0 (by simp only [List.mem_range]; omega)
+            simpa using this
+          simp only [Nat.zero_mul, byteRange] at h0
+          rw [if_pos (by omega)] at h0
+          simp only [List.drop_zero, beq_iff_eq, Option.some.injEq] at h0
+          rw [List.take_of_length_le (by omega)] at h0
+          exact hec (by rw [← h0]; exact hsl.trans hcsspec)
+        · rw [if_pos hsl] at hr; simp at hr
+
+/-- Bridge (left-most, mirror of `ensureRightMost_suffix_nil`): every step of an
+`ensure_left_most` path has a full `cs`-byte suffix — a genuine left-pad, not a
+left-empty-branch placeholder (which would force `emptyChild.length = cs`). -/
+theorem ensureLeftMost_suffix_cs (isp : InnerSpec) (cs : Nat)
+    (hco : isp.childOrder = [0, 1])
+    (hcsspec : isp.childSize.toNat = cs)
+    (hec : isp.emptyChild.length ≠ cs)
+    (path : List InnerOp) (h : ensureLeftMost isp path = true) :
+    ∀ op, op ∈ path → op.suffix.length = cs := by
+  intro op hop
+  have hpadeq : getPadding isp 0
+      = some { minPrefix := (0 : Int) * isp.childSize + isp.minPrefixLength,
+               maxPrefix := (0 : Int) * isp.childSize + isp.maxPrefixLength,
+               suffix := isp.childSize * ((2 : Int) - 1 - 0) } := by
+    unfold getPadding; rw [hco]; rfl
+  unfold ensureLeftMost at h
+  rw [hpadeq] at h
+  rw [List.all_eq_true] at h
+  have hstep := h op hop
+  rw [Bool.or_eq_true] at hstep
+  rcases hstep with hp | hl
+  · -- genuine left-pad: suffix length equals pad.suffix = childSize * 2 - childSize = cs
+    unfold hasPadding at hp
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at hp
+    have hz : (op.suffix.length : Int) = isp.childSize * ((2 : Int) - 1 - 0) := hp.2
+    have he1 : ((2 : Int) - 1 - 0) = 1 := by decide
+    rw [he1, Int.mul_one] at hz
+    have : op.suffix.length = isp.childSize.toNat := by omega
+    rw [this, hcsspec]
+  · -- placeholder: forces emptyChild.length = cs, contradicting hec
+    exfalso
+    unfold leftBranchesAreEmpty at hl
+    cases hofp : orderFromPadding isp op with
+    | none => rw [hofp] at hl; simp at hl
+    | some idx =>
+      simp only [hofp] at hl
+      by_cases hlb : idx = 0
+      · rw [hlb] at hl; simp at hl
+      · rw [if_neg hlb] at hl
+        by_cases hpl : op.prefixBytes.length < idx * isp.childSize.toNat
+        · rw [if_pos hpl] at hl; simp at hl
+        · rw [if_neg hpl] at hl
+          have hmul : isp.childSize.toNat ≤ idx * isp.childSize.toNat :=
+            Nat.le_mul_of_pos_left _ (Nat.one_le_iff_ne_zero.mpr hlb)
+          have h0 : byteRange op.prefixBytes
+              ((op.prefixBytes.length - idx * isp.childSize.toNat) + 0 * isp.childSize.toNat)
+              isp.childSize.toNat == some isp.emptyChild := by
+            have := List.all_eq_true.mp hl 0 (by simp only [List.mem_range]; omega)
+            simpa using this
+          simp only [Nat.zero_mul, Nat.add_zero, byteRange] at h0
+          rw [if_pos (by omega)] at h0
+          simp only [beq_iff_eq, Option.some.injEq] at h0
+          have hlen : ((op.prefixBytes.drop (op.prefixBytes.length - idx * isp.childSize.toNat)).take isp.childSize.toNat).length = isp.emptyChild.length := by rw [h0]
+          rw [List.length_take, List.length_drop] at hlen
+          exact hec (by omega)
+
 end Ics23
