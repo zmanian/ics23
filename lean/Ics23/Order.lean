@@ -30,6 +30,24 @@ theorem lexLt_irrefl (a : List Nat) : lexLt a a = false := by
     rw [if_neg (Nat.lt_irrefl x), if_pos (by simp)]
     exact ih
 
+/-- `lexLt` cancels a common prefix — the shared path above the divergence node
+in the neighbor argument. -/
+theorem lexLt_append (c a b : List Nat) : lexLt (c ++ a) (c ++ b) = lexLt a b := by
+  induction c with
+  | nil => rfl
+  | cons x xs ih =>
+    show (if x < x then true else if x == x then lexLt (xs ++ a) (xs ++ b) else false)
+      = lexLt a b
+    rw [if_neg (Nat.lt_irrefl x), if_pos (by simp)]
+    exact ih
+
+/-- A position starting with a smaller branch is `lexLt`-below one starting with
+a larger branch, regardless of tails. -/
+theorem lexLt_cons_lt (i j : Nat) (a b : List Nat) (h : i < j) :
+    lexLt (i :: a) (j :: b) = true := by
+  show (if i < j then true else if i == j then lexLt a b else false) = true
+  rw [if_pos h]
+
 /-- `lexLt` is transitive. -/
 theorem lexLt_trans : ∀ (a b c : List Nat),
     lexLt a b = true → lexLt b c = true → lexLt a c = true
