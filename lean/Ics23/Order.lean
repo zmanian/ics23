@@ -21,6 +21,49 @@ def lexLt : List Nat → List Nat → Bool
   | _ :: _, [] => false
   | a :: as, b :: bs => if a < b then true else if a == b then lexLt as bs else false
 
+/-- `lexLt` is irreflexive. -/
+theorem lexLt_irrefl (a : List Nat) : lexLt a a = false := by
+  induction a with
+  | nil => rfl
+  | cons x xs ih =>
+    show (if x < x then true else if x == x then lexLt xs xs else false) = false
+    rw [if_neg (Nat.lt_irrefl x), if_pos (by simp)]
+    exact ih
+
+/-- `lexLt` is transitive. -/
+theorem lexLt_trans : ∀ (a b c : List Nat),
+    lexLt a b = true → lexLt b c = true → lexLt a c = true
+  | [], [], _, h, _ => by simp [lexLt] at h
+  | _ :: _, [], _, h, _ => by simp [lexLt] at h
+  | [], _ :: _, [], _, h2 => by simp [lexLt] at h2
+  | [], _ :: _, _ :: _, _, _ => rfl
+  | x :: xs, y :: ys, [], _, h2 => by simp [lexLt] at h2
+  | x :: xs, y :: ys, z :: zs, h1, h2 => by
+    simp only [lexLt] at h1 h2 ⊢
+    by_cases hxy : x < y
+    · by_cases hyz : y < z
+      · simp [Nat.lt_trans hxy hyz]
+      · simp only [hyz, if_false] at h2
+        by_cases hyz' : (y == z) = true
+        · have hyzeq : y = z := by simpa using hyz'
+          subst hyzeq; simp [hxy]
+        · simp [hyz'] at h2
+    · simp only [hxy, if_false] at h1
+      by_cases hxy' : (x == y) = true
+      · have hxyeq : x = y := by simpa using hxy'
+        subst hxyeq
+        simp only [beq_self_eq_true, if_true] at h1
+        by_cases hxz : x < z
+        · simp [hxz]
+        · simp only [hxz, if_false] at h2 ⊢
+          by_cases hxz' : (x == z) = true
+          · have hxzeq : x = z := by simpa using hxz'
+            subst hxzeq
+            simp only [beq_self_eq_true, if_true] at h2 ⊢
+            exact lexLt_trans xs ys zs h1 h2
+          · simp [hxz'] at h2
+      · simp [hxy'] at h1
+
 /-- A successful `byteRange` returns a slice of exactly the requested length. -/
 theorem byteRange_length (data : Bytes) (start len : Nat) (s : Bytes)
     (h : byteRange data start len = some s) : s.length = len := by
