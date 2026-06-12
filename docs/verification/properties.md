@@ -252,26 +252,39 @@ the corpus.
    real tree). The two ambiguity arms are real machine-checkable obstructions
    (F3 and its leaf-level analogue); collapsing them to a bare collision is what
    the symbolic-Merkle model would add — not required for the honest theorem.
-2. **Theorem B (non-existence soundness) — the one remaining `sorry`.**
-   *Why it can't reuse the existence machinery (a real distinction):* applying
-   `applyPath_merge` to the existence proof (for `key`) and a neighbor proof (for
-   `l.key`/`r.key`) is **vacuous** — two proofs for *different* keys legitimately
-   diverge at their common ancestor, which the model reads as a
-   `PositionalAmbiguity`. (`PositionalAmbiguity` is only a *meaningful* obstruction
-   for existence binding, where the two proofs share a key and an honest prover
-   produces identical paths — so divergence there really is the F3 attack.) The
-   non-existence contradiction lives entirely in the *ordering*: `bytesLt` on keys
-   plus `ensure_left_neighbor` / `ensure_{left,right}_most` must imply the
-   bracketing leaves are adjacent, so an existence proof placing `key` strictly
-   between them is impossible. That requires a from-scratch ordered-tree position
-   model (the size of the `applyPath_merge` development), and its adversarial
-   cases need the symbolic-Merkle model. Concretely:
-   Formalize the ordered-tree semantics
-   an `InnerSpec` describes (left-most / right-most / adjacency under
-   `child_order`, `empty_child` for sparse trees), then prove: an accepted
-   non-existence proof for `k` plus an accepted existence proof for `k` ⇒
-   collision. Respect `prehash_key_before_comparison` (guarantee is over hashed
-   keys for SMT/JMT).
+2. **Theorem B — honest-root form, DONE, total
+   (`lean/Ics23/TreeNonExist.lean`).** Non-existence soundness in the same
+   honest-root tree model as item 0, covering **every proof shape the verifier
+   accepts**: a verifying non-existence proof for `key` plus a verifying
+   existence proof for `key` against `root = rootHash t` of a key-sorted
+   (`SortedTree`) well-formed tree yields a `HashCollision`.
+   - *Two-sided* (`nonexistence_sound_tree`): `ensure_left_neighbor`
+     decomposes (`ensureLeftNeighbor_spec`) into a shared root path, a
+     left-step divergence, and right-most/left-most remainders;
+     `neighbor_divergence` (byte→tree navigation induction) pins both
+     bracketing proofs to a real divergence node `N`, so the absent key would
+     sit in the gap between `maxKey N.left` and `minKey N.right` —
+     `node_gap_no_member` rules that out in a sorted tree. The F4/F5
+     padding-vs-placeholder subtlety is discharged by
+     `ensureRightMost_suffix_nil` / `ensureLeftMost_suffix_cs` (needs
+     `emptyChild.length ≠ childSize`, true for Tendermint's `[]`).
+   - *One-sided* (`nonexistence_sound_tree_leftOnly` / `_rightOnly`): a
+     left-only proof's `ensure_right_most` path makes its neighbor the
+     rightmost leaf (`reaches_max`), so `maxKey t < key` contradicts
+     `member_le_maxKey`; mirror with `reaches_min` / `minKey_le_member`.
+   - *Total* (`nonexistence_sound_tree_total`): case split over the four
+     neighbor shapes (no-neighbor proofs never verify,
+     `verifyNonExistence_none`). Instantiated:
+     `nonexistence_sound_tree_tendermint{,_total}` — side conditions by
+     `decide`, leaf injectivity proved, `FixedHash` the only assumption.
+   The *abstract-root* `nonexistence_sound` (NonExistSound.lean) remains the
+   one deliberate `sorry`: an opaque root carries no tree structure, so
+   nothing connects byte-order to tree position (exactly F3/F4) — adjacency is
+   inherently a statement about a real tree, making the honest-root model the
+   natural domain, not a shortcut. Remaining for other specs: SMT/JMT
+   instantiation needs `prehash_key_before_comparison` (order over hashed
+   keys) and a different empty-branch argument (SMT's 32-byte `emptyChild`
+   *is* digest-sized, so the F4/F5 bridge above does not apply).
 3. **Transcribe Zellic findings** into Properties / corpus.
 4. **Batch/compressed** verification — model + decide whether in proof scope
    (RFC open question 3).

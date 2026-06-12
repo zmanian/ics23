@@ -86,6 +86,37 @@ theorem verifyNonExistence_right (H : HashFn) (s : ProofSpec) (root key : Bytes)
   simp only [hr, Bool.and_eq_true] at h
   exact h.1.2
 
+/-- One-sided extraction (left-only): with no right neighbor, the verifier
+requires the left neighbor's path to be right-most — the claim is that `key`
+lies beyond the last leaf of the tree. -/
+theorem verifyNonExistence_leftOnly (H : HashFn) (s : ProofSpec) (root key : Bytes)
+    (nep : NonExistenceProof) (l : ExistenceProof)
+    (hl : nep.left = some l) (hr : nep.right = none)
+    (h : verifyNonExistence H nep s root key = true) :
+    ensureRightMost s.innerSpec l.path = true := by
+  unfold verifyNonExistence at h
+  simp only [hl, hr, Bool.and_eq_true] at h
+  exact h.2
+
+/-- One-sided extraction (right-only): with no left neighbor, the verifier
+requires the right neighbor's path to be left-most — the claim is that `key`
+lies before the first leaf of the tree. -/
+theorem verifyNonExistence_rightOnly (H : HashFn) (s : ProofSpec) (root key : Bytes)
+    (nep : NonExistenceProof) (r : ExistenceProof)
+    (hl : nep.left = none) (hr : nep.right = some r)
+    (h : verifyNonExistence H nep s root key = true) :
+    ensureLeftMost s.innerSpec r.path = true := by
+  unfold verifyNonExistence at h
+  simp only [hl, hr, Bool.and_eq_true] at h
+  exact h.2
+
+/-- A no-neighbor non-existence proof never verifies. -/
+theorem verifyNonExistence_none (H : HashFn) (s : ProofSpec) (root key : Bytes)
+    (nep : NonExistenceProof) (hl : nep.left = none) (hr : nep.right = none) :
+    verifyNonExistence H nep s root key = false := by
+  unfold verifyNonExistence
+  simp [hl, hr]
+
 /-- A two-sided non-existence proof brackets `key` strictly: its left neighbor
 sorts before its right neighbor. Composes the extraction lemmas with
 transitivity; a fully-proved consistency property of the verifier. -/
