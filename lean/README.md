@@ -14,8 +14,11 @@ cd lean
 lake build
 ```
 
-A clean build prints one expected warning — `existence_binding` (Theorem A) still
-uses `sorry` while its proof is being landed. Everything else is proof-complete.
+A clean build prints one expected warning — the *abstract-root*
+`nonexistence_sound` (NonExistSound.lean) is the one deliberate `sorry`: an
+opaque root carries no tree structure, so byte-order cannot be connected to
+tree position (findings F3/F4). Both theorems are instead proved in the
+honest-root tree models (below). Everything else is proof-complete.
 
 ## Layout
 
@@ -24,16 +27,27 @@ uses `sorry` while its proof is being landed. Everything else is proof-complete.
 | `Ics23/Types.lean` | `proofs.proto`, `cosmos.ics23.v1.rs` | proto types |
 | `Ics23/Ops.lean` | `rust/src/ops.rs` | `applyLeaf`, `applyInner`, `doHash` family, `doLength` |
 | `Ics23/Verify.lean` | `rust/src/verify.rs` | existence verifier |
+| `Ics23/NonExist.lean` | `rust/src/verify.rs` | non-existence verifier |
 | `Ics23/Specs.lean` | `rust/src/api.rs` | IAVL / Tendermint / SMT specs |
-| `Ics23/Soundness.lean` | — | `WellFormed`, collisions, Theorems A and C |
+| `Ics23/Varint.lean` | — | varint self-delimiting lemmas (A1) |
+| `Ics23/Soundness.lean` | — | `WellFormed`, collisions, Theorem C |
+| `Ics23/Existence.lean` | — | Theorem A, byte-level (`existence_binding`) |
+| `Ics23/NonExistSound.lean` | — | byte order; abstract-root Theorem B (the `sorry`) |
+| `Ics23/Order.lean` | — | order lemmas for the neighbor checks |
+| `Ics23/LeafInj.lean` | — | joint leaf injectivity, proved for all three specs |
+| `Ics23/Tree.lean` | — | honest-root `MTree` model; Theorem A (`membership_sound`) |
+| `Ics23/TreeNonExist.lean` | — | Theorem B, total (`nonexistence_sound_tree_total`) |
+| `Ics23/SmtTree.lean` | — | sparse (SMT/JMT) model; Theorem A (`membership_sound_smt`) |
+| `Ics23/SmtNonExist.lean` | — | Theorem B for SMT (`nonexistence_sound_smt_total`) |
+| `Ics23/IavlPrefix.lean` | — | IAVL prefix structure; F3 witness |
+| `Ics23/Sha256.lean` | — | pure-Lean SHA-256 (validated) |
+| `Ics23/Executable.lean` | — | end-to-end executable runs, forgery refutations |
+| `Ics23/Corpus.lean` | — | regression corpus (proven accept/reject facts) |
 
 The model is parameterized over an abstract hash family and makes no
 collision-resistance assumption: soundness theorems conclude by exhibiting a
 `HashCollision`. See the modeling-assumptions section of the property catalogue
 for where (and why) the model intentionally differs from the Rust.
-
-| `Ics23/NonExist.lean` | `rust/src/verify.rs` | non-existence verifier |
-| `Ics23/Corpus.lean` | — | regression corpus (proven accept/reject facts) |
 
 ## Status
 
@@ -81,9 +95,28 @@ for where (and why) the model intentionally differs from the Rust.
     The ambiguity arms are real machine-checkable obstructions (F3 + leaf-level
     analogue); collapsing them needs the symbolic-Merkle model. Built on
     `applyPath_merge`, `ensureLeaf_eq`, `leafHash_innerImage_collision`.
-- **Stated, proof in progress (the one remaining `sorry`):**
-  - Theorem B, non-existence soundness (`nonexistence_sound`) — needs the
-    ordered-tree semantics an `InnerSpec` describes / the symbolic-Merkle model.
+  - **Honest-root Theorem A** (`Tree.lean`): `membership_sound` — an existence
+    proof verifying against `root = rootHash t` of a real tree implies genuine
+    membership, no ambiguity arm (`split_pins` resolves F3 against a real
+    node). Instantiated: `membership_sound_tendermint` with leaf injectivity
+    *proved* (`LeafInj.lean`), leaving `FixedHash` as the only assumption.
+  - **Honest-root Theorem B, total** (`TreeNonExist.lean`):
+    `nonexistence_sound_tree_total` — for a key-sorted well-formed tree, any
+    verifying non-existence proof plus a verifying existence proof for the
+    same key yields a `HashCollision`, covering all verifier-accepted shapes
+    (two-sided / left-only / right-only). Instantiated:
+    `nonexistence_sound_tree_tendermint_total`.
+  - **SMT/JMT instantiation** (`SmtTree.lean`, `SmtNonExist.lean`): both
+    theorems for the sparse model, where empty subtrees hash to the
+    `empty_child` placeholder and keys sort by their SHA-256 prehash
+    (`keyForComparison`). One added assumption, `EmptyChildFree` (no exhibited
+    preimage of the all-zero placeholder — the standard SMT assumption):
+    `membership_sound_smt`, `nonexistence_sound_smt_total`.
+- **Stated, deliberately unproved (the one whitelisted `sorry`):**
+  - Abstract-root Theorem B (`nonexistence_sound`, NonExistSound.lean) — an
+    opaque root has no tree structure to connect byte-order to position
+    (F3/F4); adjacency is inherently a statement about a real tree, which is
+    exactly what the honest-root theorems above capture.
 - **Executable end to end:** a concrete SHA-256 (`Sha256.lean`, validated
   against the vectors in `rust/src/ops.rs`) and `concreteHash` make the verifier
   runnable; `Executable.lean` computes real roots and refutes value-swap /
@@ -91,5 +124,7 @@ for where (and why) the model intentionally differs from the Rust.
   differential oracle.
 - **CI:** `.github/workflows/lean.yml` builds all proofs and fails if any
   unexpected `sorry` appears (exactly one is whitelisted).
-- **Next:** prove Theorem B (`nonexistence_sound`); drive the executable model
-  against the Rust/Go implementations (Phase 2a).
+- **Next:** drive the executable model against the Rust/Go implementations
+  (Phase 2a differential oracle); transcribe the Zellic findings into the
+  corpus; IAVL honest-root instantiation (variable-length inner prefixes,
+  `child_size = 33`).

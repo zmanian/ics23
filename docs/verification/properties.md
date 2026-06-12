@@ -50,7 +50,9 @@ without a hash collision.
 
 - Enforced by: `verify_existence` + `check_existence_spec` +
   `calculate_existence_root_for_spec` (`rust/src/verify.rs`).
-- Model: `Ics23.existence_binding` (statement landed; proof in progress).
+- Model: proved — byte-level `Ics23.existence_binding` (Existence.lean) and
+  honest-root `membership_sound` / `membership_sound_tendermint` (Tree.lean) /
+  `membership_sound_smt` (SmtTree.lean). See "Remaining obligations" items 0–1.
 - Rests on:
   - **A1 Leaf-encoding injectivity.** `prefix ++ enc(prehash key) ++ enc(prehash value)`
     parses uniquely into `(key, value)` — via a length-determining `LengthOp`
@@ -75,9 +77,12 @@ proof for key `k` and an existence proof for `k`.
 - Enforced by: `verify_non_existence`, `ensure_left_most`, `ensure_right_most`,
   `ensure_left_neighbor`, `left_branches_are_empty`, `right_branches_are_empty`
   (`rust/src/verify.rs`).
-- Model: not yet (next increment). Requires formalizing the ordered-tree
-  semantics an `InnerSpec` describes, arbitrary `child_order` permutations, and
-  `empty_child` for sparse trees.
+- Model: proved in the honest-root tree models, total over verifier-accepted
+  shapes — `nonexistence_sound_tree_total` / `_tendermint_total`
+  (TreeNonExist.lean) and `nonexistence_sound_smt_total` (SmtNonExist.lean,
+  including `empty_child` placeholder handling and hashed-key order). See
+  "Remaining obligations" items 2–2a. Arbitrary `child_order` permutations
+  remain out of scope (all shipped specs are binary `[0, 1]`).
 - Note: when `prehash_key_before_comparison` is set (SMT/JMT), the ordering is
   over hashed keys, so the guarantee is non-existence of the *hashed* key.
 
@@ -281,10 +286,34 @@ the corpus.
    one deliberate `sorry`: an opaque root carries no tree structure, so
    nothing connects byte-order to tree position (exactly F3/F4) — adjacency is
    inherently a statement about a real tree, making the honest-root model the
-   natural domain, not a shortcut. Remaining for other specs: SMT/JMT
-   instantiation needs `prehash_key_before_comparison` (order over hashed
-   keys) and a different empty-branch argument (SMT's 32-byte `emptyChild`
-   *is* digest-sized, so the F4/F5 bridge above does not apply).
+   natural domain, not a shortcut.
+2a. **Theorems A and B for the SMT/JMT spec — DONE
+   (`lean/Ics23/SmtTree.lean`, `lean/Ics23/SmtNonExist.lean`).** The `MTree`
+   model cannot represent sparse trees (empty subtrees hash to the constant
+   `empty_child` placeholder, not a hash image), and SMT's 32-byte
+   `emptyChild` *is* digest-sized, so the F4/F5 bridge above does not apply.
+   `SMTree` adds an `.empty` constructor with `rootHashS .empty = empty_child`,
+   and one new explicitly-stated assumption, `EmptyChildFree` (no exhibited
+   SHA-256 preimage of the all-zero placeholder — the standard sparse-merkle
+   assumption; without it a prover knowing `H(x) = 0^32` could graft a fake
+   empty subtree).
+   - *Theorem A* (`membership_sound_smt`): `reachesS` reuses `split_pins`
+     byte-level; a fold can never terminate inside an empty subtree because
+     fold values are hash images (`applyPath_ne_emptyChild`).
+   - *Theorem B* (`nonexistence_sound_smt_total`, with two-sided and
+     one-sided forms): the placeholder arm of `ensure_right_most` /
+     `ensure_left_most` is *embraced* instead of excluded —
+     `ensureRightMost_step_smt` shows each step's suffix is `[]` (genuine
+     right step) or exactly `emptyChild`, which pins the skipped sibling to a
+     genuinely empty subtree (`rootHashS_ec_empty`); mirrored on the prefix
+     side for left-most. `reaches_maxS`/`reaches_minS` land on the rightmost/
+     leftmost *nonempty* leaf (Option-valued `maxKeyS`/`minKeyS`), and
+     `neighbor_divergence_smt` + `node_gap_no_memberS` close the gap argument.
+     Key order is on **comparison keys** (`keyForComparison` = SHA-256 of the
+     raw key for `smt_spec`, honoring `prehash_key_before_comparison`):
+     `SortedTreeS` is sortedness of the hashed key space, exactly how a real
+     SMT/JMT arranges its leaves. Side conditions by `decide`; remaining
+     hypotheses: `FixedHash`, `EmptyChildFree`, sortedness.
 3. **Transcribe Zellic findings** into Properties / corpus.
 4. **Batch/compressed** verification — model + decide whether in proof scope
    (RFC open question 3).
