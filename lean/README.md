@@ -42,9 +42,10 @@ honest-root tree models (below). Everything else is proof-complete.
 | `Ics23/IavlTree.lean` | — | IAVL model (`WFTreeI`); Theorem A (`membership_sound_iavl`) |
 | `Ics23/IavlNonExist.lean` | — | Theorem B for IAVL (`nonexistence_sound_iavl_total`) |
 | `Ics23/IavlPrefix.lean` | — | IAVL prefix structure; F3 witness |
-| `Ics23/Sha256.lean` | — | pure-Lean SHA-256 (validated) |
+| `Ics23/Sha256.lean` | — | pure-Lean SHA-256 (validated, incl. padding boundaries) |
 | `Ics23/Executable.lean` | — | end-to-end executable runs, forgery refutations |
 | `Ics23/Corpus.lean` | — | regression corpus (proven accept/reject facts) |
+| `Ics23/TestVectors.lean` | `testdata/` | GENERATED differential vectors (`rust/examples/lean_testdata.rs`) |
 
 The model is parameterized over an abstract hash family and makes no
 collision-resistance assumption: soundness theorems conclude by exhibiting a
@@ -126,12 +127,20 @@ for where (and why) the model intentionally differs from the Rust.
     (F3/F4); adjacency is inherently a statement about a real tree, which is
     exactly what the honest-root theorems above capture.
 - **Executable end to end:** a concrete SHA-256 (`Sha256.lean`, validated
-  against the vectors in `rust/src/ops.rs`) and `concreteHash` make the verifier
-  runnable; `Executable.lean` computes real roots and refutes value-swap /
-  wrong-shape forgeries by `native_decide`. This is the seed of the Phase 2a
-  differential oracle.
+  against the vectors in `rust/src/ops.rs` plus padding-boundary regressions)
+  and `concreteHash` make the verifier runnable; `Executable.lean` computes
+  real roots and refutes value-swap / wrong-shape forgeries by
+  `native_decide`.
+- **Phase 2a differential oracle:** `rust/examples/lean_testdata.rs` decodes
+  the shared `testdata/` vectors and generates `TestVectors.lean`, so
+  `lake build` re-verifies all 18 vectors against the model with real
+  SHA-256; CI fails on regeneration drift. Its first run caught a real bug:
+  `Sha256.pad`'s truncating `Nat` subtraction dropped the spill-over padding
+  block for lengths `≡ 56..62 (mod 64)` — missed by every Tendermint/SMT
+  preimage, exposed by IAVL's 57-byte leaf preimages. (Executable layer only;
+  the soundness theorems are abstract over `HashFn`.)
 - **CI:** `.github/workflows/lean.yml` builds all proofs and fails if any
   unexpected `sorry` appears (exactly one is whitelisted).
-- **Next:** drive the executable model against the Rust/Go implementations
-  (Phase 2a differential oracle); transcribe the Zellic findings into the
-  corpus.
+- **Next:** transcribe the Zellic findings into the corpus; optionally extend
+  the differential oracle to the negative/malformed unit-test vectors
+  (`testdata/TestCheckAgainstSpecData.json` etc.).
