@@ -39,6 +39,8 @@ honest-root tree models (below). Everything else is proof-complete.
 | `Ics23/TreeNonExist.lean` | — | Theorem B, total (`nonexistence_sound_tree_total`) |
 | `Ics23/SmtTree.lean` | — | sparse (SMT/JMT) model; Theorem A (`membership_sound_smt`) |
 | `Ics23/SmtNonExist.lean` | — | Theorem B for SMT (`nonexistence_sound_smt_total`) |
+| `Ics23/IavlTree.lean` | — | IAVL model (`WFTreeI`); Theorem A (`membership_sound_iavl`) |
+| `Ics23/IavlNonExist.lean` | — | Theorem B for IAVL (`nonexistence_sound_iavl_total`) |
 | `Ics23/IavlPrefix.lean` | — | IAVL prefix structure; F3 witness |
 | `Ics23/Sha256.lean` | — | pure-Lean SHA-256 (validated) |
 | `Ics23/Executable.lean` | — | end-to-end executable runs, forgery refutations |
@@ -112,6 +114,12 @@ for where (and why) the model intentionally differs from the Rust.
     (`keyForComparison`). One added assumption, `EmptyChildFree` (no exhibited
     preimage of the all-zero placeholder — the standard SMT assumption):
     `membership_sound_smt`, `nonexistence_sound_smt_total`.
+  - **IAVL instantiation** (`IavlTree.lean`, `IavlNonExist.lean`): both
+    theorems for the IAVL shape — variable 4–12 byte prefixes and 33-byte
+    amino child slots — via `split_pins_var`, which pins a node split from
+    the suffix length alone (no prefix pinning, so `min ≠ max` is fine):
+    `membership_sound_iavl`, `nonexistence_sound_iavl_total`. **Honest-root
+    Theorems A and B now cover all three shipped specs.**
 - **Stated, deliberately unproved (the one whitelisted `sorry`):**
   - Abstract-root Theorem B (`nonexistence_sound`, NonExistSound.lean) — an
     opaque root has no tree structure to connect byte-order to position
@@ -126,5 +134,4 @@ for where (and why) the model intentionally differs from the Rust.
   unexpected `sorry` appears (exactly one is whitelisted).
 - **Next:** drive the executable model against the Rust/Go implementations
   (Phase 2a differential oracle); transcribe the Zellic findings into the
-  corpus; IAVL honest-root instantiation (variable-length inner prefixes,
-  `child_size = 33`).
+  corpus.

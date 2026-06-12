@@ -314,6 +314,23 @@ the corpus.
      `SortedTreeS` is sortedness of the hashed key space, exactly how a real
      SMT/JMT arranges its leaves. Side conditions by `decide`; remaining
      hypotheses: `FixedHash`, `EmptyChildFree`, sortedness.
+2b. **Theorems A and B for the IAVL spec — DONE
+   (`lean/Ics23/IavlTree.lean`, `lean/Ics23/IavlNonExist.lean`).** With this,
+   honest-root Theorems A and B hold for **all three shipped specs**. IAVL
+   breaks the Tendermint shape differently: variable 4–12 byte inner prefixes
+   (height/size/version varints) violate `min = max`, and the 33-byte amino
+   child slots (`0x20` length byte + 32-byte digest) make digest length ≠
+   `child_size`. An IAVL node is the existing `MTree` shape with a 1-byte
+   `mid` (`WFTreeI`), and the pinning argument is replaced by
+   `split_pins_var`: the verifier's `suffix % child_size = 0` check together
+   with `max_prefix_length < child_size` (12 < 33 — the `max < min +
+   child_size` well-formedness family doing its job) pins the suffix length
+   to `0` or `child_size`, each resolving the whole split by plain append
+   injectivity, with *no* prefix-length pinning. The order machinery and
+   padding bridges reuse TreeNonExist.lean verbatim (IAVL's `emptyChild = []`
+   has length 0 ≠ 33, so the placeholder arm is unreachable as in
+   Tendermint). `membership_sound_iavl`, `nonexistence_sound_iavl_total`:
+   side conditions by `decide`, `FixedHash` the only remaining assumption.
 3. **Transcribe Zellic findings** into Properties / corpus.
 4. **Batch/compressed** verification — model + decide whether in proof scope
    (RFC open question 3).
