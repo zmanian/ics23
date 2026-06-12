@@ -337,10 +337,21 @@ the corpus.
 
 ## Open items (cross-phase)
 
-- Phase 2a differential oracle. The executable model now exists — a validated
-  pure-Lean SHA-256 (`lean/Ics23/Sha256.lean`) and `concreteHash`, with
-  end-to-end runs in `lean/Ics23/Executable.lean` (existence and non-existence,
-  including forgery rejection). Remaining: feed it the `testdata/` vectors the
-  Rust/Go suites use (needs a protobuf→simple-JSON bridge and a Lean reader) and
-  compare accept/reject across all three implementations in CI.
+- Phase 2a differential oracle — **DONE for the shared vectors.**
+  `rust/examples/lean_testdata.rs` decodes every `testdata/{iavl,tendermint,
+  smt}/` vector's protobuf `CommitmentProof` and generates
+  `lean/Ics23/TestVectors.lean`: the decoded proofs as Lean literals plus a
+  `native_decide` acceptance check per vector mirroring the Rust call, so
+  `lake build` re-verifies all 18 shared vectors against the model with real
+  SHA-256. CI regenerates the file and fails on drift.
+  **First catch:** on its first run the oracle rejected all six IAVL vectors —
+  the model's `Sha256.pad` used truncating `Nat` subtraction and silently
+  dropped the spill-over padding block for message lengths `≡ 56..62 (mod
+  64)`. The three embedded validation vectors and every Tendermint/SMT
+  preimage miss that window; IAVL's 57-byte leaf preimages land in it. Fixed
+  with boundary regressions in `Sha256.lean`. (Scope note: `Sha256.lean` is
+  the *executable* layer only — the soundness theorems are abstract over
+  `HashFn` and were never affected.)
+  Possible extension: also run the negative/malformed vectors
+  (`TestCheckAgainstSpecData.json` etc.) through the model.
 - Phase 3 Kani harnesses for Rust panic/overflow safety.

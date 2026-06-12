@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - lean/**
+      - testdata/**
+      - rust/examples/lean_testdata.rs
       - .github/workflows/lean.yml
   push:
     branches:
@@ -29,6 +31,18 @@ jobs:
             -o elan-init.sh
           sh elan-init.sh -y --default-toolchain none
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Regenerate differential test vectors
+        working-directory: ./rust
+        run: cargo run --example lean_testdata
+
+      - name: Differential vectors in sync
+        run: |
+          # TestVectors.lean is generated from testdata/ by the Rust decoder;
+          # building it (below) re-verifies every shared vector against the
+          # Lean model with real SHA-256. Drift between the committed copy and
+          # a fresh regeneration means the vectors or the bridge changed.
+          git diff --exit-code lean/Ics23/TestVectors.lean
 
       - name: Build (checks all proofs)
         working-directory: ./lean
