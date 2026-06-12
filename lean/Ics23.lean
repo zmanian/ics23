@@ -16,6 +16,7 @@ import Ics23.Tree
 import Ics23.TreeNonExist
 import Ics23.SmtTree
 import Ics23.SmtNonExist
+import Ics23.IavlTree
 import Ics23.Sha256
 import Ics23.Executable
 import Ics23.Corpus
