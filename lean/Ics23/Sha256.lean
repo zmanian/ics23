@@ -30,8 +30,12 @@ def pad (msg : List UInt8) : List UInt8 :=
   let len := msg.length
   let bitLen : UInt64 := (UInt64.ofNat len) * 8
   -- 0x80, then k zero bytes so total ≡ 56 (mod 64), then 8-byte big-endian bit length.
+  -- `120 - r` keeps the subtraction non-truncating for r ∈ [0, 63]: Nat `56 - r`
+  -- clamps to 0 for r > 56, which dropped the spill-over padding block for
+  -- messages with `length % 64 ∈ [56, 62]` (caught by the IAVL test vectors —
+  -- their 57-byte leaf preimages land exactly in that window).
   let withOne := msg ++ [0x80]
-  let zeros := (56 - (withOne.length % 64) + 64) % 64
+  let zeros := (120 - (withOne.length % 64)) % 64
   let lenBytes : List UInt8 :=
     (List.range 8).map (fun i => UInt8.ofNat ((bitLen >>> (UInt64.ofNat (8 * (7 - i)))).toNat % 256))
   withOne ++ List.replicate zeros 0 ++ lenBytes
@@ -106,5 +110,26 @@ example : toHex (hash [0x66, 0x6f, 0x6f, 0x62, 0x61, 0x72])
 -- empty string → e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 example : toHex (hash [])
     = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" := by native_decide
+
+/-! Padding-boundary regressions: lengths around `% 64 ∈ [55, 64]`, where the
+8-byte length field no longer fits the final block and padding must spill into
+an extra block. The original `pad` used truncating `Nat` subtraction and
+silently dropped bytes exactly in the `[56, 62]` window — missed by the three
+vectors above and by every Tendermint/SMT preimage, caught by the IAVL
+differential vectors (TestVectors.lean). Digests cross-checked against
+Python's `hashlib`. -/
+
+example : toHex (hash (List.replicate 55 0x61))
+    = "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318" := by native_decide
+example : toHex (hash (List.replicate 56 0x61))
+    = "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a" := by native_decide
+example : toHex (hash (List.replicate 57 0x61))
+    = "f13b2d724659eb3bf47f2dd6af1accc87b81f09f59f2b75e5c0bed6589dfe8c6" := by native_decide
+example : toHex (hash (List.replicate 62 0x61))
+    = "f506898cc7c2e092f9eb9fadae7ba50383f5b46a2a4fe5597dbb553a78981268" := by native_decide
+example : toHex (hash (List.replicate 63 0x61))
+    = "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34" := by native_decide
+example : toHex (hash (List.replicate 64 0x61))
+    = "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb" := by native_decide
 
 end Ics23.Sha256
