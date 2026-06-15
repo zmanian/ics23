@@ -10,9 +10,14 @@ corpus: concrete malicious inputs the model is required to reject.
 
 ## Sources to mine
 
-- `docs/audits/ICS-23 - Zellic Audit Report.pdf` — extract each finding and its
-  invariant; add any that are not already covered below. (Not yet transcribed
-  into this document; do not treat the list below as incorporating it.)
+- `docs/audits/ICS-23 - Zellic Audit Report.pdf` — **transcribed** into the
+  regression corpus (`lean/Ics23/Corpus.lean`, "Zellic audit findings" section):
+  all eight findings recorded, with machine-checked model witnesses for the ones
+  that have a decidable counterpart (3.1 sorted-keys → `SortedTree` hypothesis,
+  3.2 `MaxPrefixLength` → `innerWFB`, 3.4 zero `child_size`, 3.5 proof-size depth
+  gate, 3.6 out-of-bounds `child_order` → total `getPadding`) and notes for the
+  implementation-only/out-of-scope ones (3.3 TS, 3.7 compressed batch, 3.8
+  stricter checks). See "Zellic finding map" below.
 - The 2020 Informal Systems audit of the original `confio/ics23`.
 - The Cosmos "Dragonberry" advisory (Oct 2022) — proof-forgery class in the
   Cosmos proof-verification stack; the canonical motivation.
@@ -134,7 +139,24 @@ Concrete malicious proofs, each targeting one invariant. To be encoded as Lean
 - [ ] **C-negative:** spec with non-positive `child_size` or
       `max_prefix_length ≥ min_prefix_length + child_size`; must fail `WellFormed`.
 - [ ] **depth-bounds:** `min_depth ≠ 0` with path length outside `[min, max]`.
-- [ ] (from Zellic / Dragonberry — to be added once transcribed.)
+- [x] **Zellic findings** — transcribed; see the map below.
+
+### Zellic finding map (audit → model)
+
+The July 2024 Zellic assessment (`docs/audits/`) reported eight findings. Each is
+recorded in `lean/Ics23/Corpus.lean` under "Zellic audit findings", with a
+machine-checked witness where the model has a decidable counterpart:
+
+| # | Finding (severity) | Model treatment |
+|---|---|---|
+| 3.1 | Nonexistence soundness depends on sorted keys (Critical) | The `SortedTree`/`SortedTreeS` hypothesis of Theorem B (modeling note F4). Witness: the Zellic Fig. 3.1 tree is a member-bearing tree machine-checked **not** `SortedTree`. |
+| 3.2 | Forging with `MaxPrefixLength ≥ MinPrefixLength + ChildSize` (Critical) | `innerWFB` requires `max < min + child_size`; the split-pinning lemmas rely on it. Witness: the boundary spec fails `wellFormedB` and the op fails `ensureInner`. |
+| 3.3 | TypeScript skips IAVL prefix checks (Critical) | Implementation-specific (TS removed upstream). Model is the Rust/Go surface; omits IAVL prefix checks as a *sound over-approximation* (modeling assumption 2). Note only. |
+| 3.4 | Zero division in `ensure_inner` (High) | `child_size = 0` fails `innerWFB`/`ensureInner` (model is `%`-total, no panic). Witness: `ensureInner … negChildSizeSpec = false`. Rust panic-freedom → Kani. |
+| 3.5 | Unrestricted proof size (Medium) | Liveness/DoS, outside soundness. Model has the depth gate; shipped specs disable it (`min_depth = 0`), faithfully reflecting the finding. Witness: over-deep path fails `checkExistenceSpec` once armed. |
+| 3.6 | Panic on out-of-bounds `ChildOrder` (Low) | Model's `getPadding` is total (returns `none`, never panics); theorems stated for binary `[0,1]`. Witness: `getPadding {childOrder := [0,2]} 1 = none`. |
+| 3.7 | Panic in `decompressExist` (Low) | Compressed/batched proofs removed upstream; out of model scope. Note only. |
+| 3.8 | IAVL/Tendermint checks could be stricter (Informational) | The honest-root tree models bake the stricter node shape into `WFTree`/`WFTreeI`/`WFTreeS`. Note only. |
 
 ## Findings (surfaced by the verification work)
 
@@ -331,9 +353,11 @@ the corpus.
    has length 0 ≠ 33, so the placeholder arm is unreachable as in
    Tendermint). `membership_sound_iavl`, `nonexistence_sound_iavl_total`:
    side conditions by `decide`, `FixedHash` the only remaining assumption.
-3. **Transcribe Zellic findings** into Properties / corpus.
+3. **Transcribe Zellic findings** into Properties / corpus — **DONE.** All eight
+   recorded in `Corpus.lean` with machine-checked witnesses where decidable; see
+   the "Zellic finding map" above.
 4. **Batch/compressed** verification — model + decide whether in proof scope
-   (RFC open question 3).
+   (RFC open question 3). (Zellic 3.7 concerns this; removed upstream.)
 
 ## Open items (cross-phase)
 
