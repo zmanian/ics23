@@ -93,7 +93,10 @@ fn left_branches_slice_in_bounds() {
         while i < left_branches {
             let from = actual_prefix + i * child_size;
             // models `op.prefix[from .. from + child_size]`
-            assert!(from + child_size <= prefix_len, "left-branch slice in bounds");
+            assert!(
+                from + child_size <= prefix_len,
+                "left-branch slice in bounds"
+            );
             i += 1;
         }
     }
@@ -126,7 +129,10 @@ fn right_branches_slice_in_bounds_binary() {
     while i < right_branches {
         let from = i * child_size;
         // models `op.suffix[from .. from + child_size]`
-        assert!(from + child_size <= suffix_len, "right-branch slice in bounds (binary)");
+        assert!(
+            from + child_size <= suffix_len,
+            "right-branch slice in bounds (binary)"
+        );
         i += 1;
     }
 }
